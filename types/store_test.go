@@ -1,128 +1,240 @@
-package types_test
+package types
 
 import (
+	"fmt"
 	"testing"
 
-	dbm "github.com/cosmos/cosmos-db"
-	"github.com/stretchr/testify/suite"
-	"github.com/tendermint/tendermint/libs/log"
-
-	"github.com/cosmos/cosmos-sdk/store/metrics"
-	"github.com/cosmos/cosmos-sdk/store/rootmulti"
-	"github.com/cosmos/cosmos-sdk/store/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/stretchr/testify/require"
+	"gotest.tools/v3/assert"
 )
 
-type storeTestSuite struct {
-	suite.Suite
-}
+func TestStoreUpgrades(t *testing.T) {
+	t.Parallel()
+	type toAdd struct {
+		key string
+	}
+	type toDelete struct {
+		key    string
+		delete bool
+	}
+	type toRename struct {
+		newkey string
+		result string
+	}
 
-func TestStoreTestSuite(t *testing.T) {
-	suite.Run(t, new(storeTestSuite))
-}
-
-func (s *storeTestSuite) SetupSuite() {
-	s.T().Parallel()
-}
-
-func (s *storeTestSuite) TestPrefixEndBytes() {
-	testCases := []struct {
-		prefix   []byte
-		expected []byte
+	cases := map[string]struct {
+		upgrades     *StoreUpgrades
+		expectAdd    []toAdd
+		expectDelete []toDelete
+		expectRename []toRename
 	}{
-		{[]byte{byte(55), byte(255), byte(255), byte(0)}, []byte{byte(55), byte(255), byte(255), byte(1)}},
-		{[]byte{byte(55), byte(255), byte(255), byte(15)}, []byte{byte(55), byte(255), byte(255), byte(16)}},
-		{[]byte{byte(55), byte(200), byte(255)}, []byte{byte(55), byte(201)}},
-		{[]byte{byte(55), byte(255), byte(255)}, []byte{byte(56)}},
-		{[]byte{byte(255), byte(255), byte(255)}, nil},
-		{[]byte{byte(255)}, nil},
-		{nil, nil},
+		"empty upgrade": {
+			expectDelete: []toDelete{{"foo", false}},
+			expectRename: []toRename{{"foo", ""}},
+		},
+		"simple matches": {
+			upgrades: &StoreUpgrades{
+				Deleted: []string{"foo"},
+				Renamed: []StoreRename{{"bar", "baz"}},
+			},
+			expectDelete: []toDelete{{"foo", true}, {"bar", false}, {"baz", false}},
+			expectRename: []toRename{{"foo", ""}, {"bar", ""}, {"baz", "bar"}},
+		},
+		"many data points": {
+			upgrades: &StoreUpgrades{
+				Added:   []string{"foo", "bar", "baz"},
+				Deleted: []string{"one", "two", "three", "four", "five"},
+				Renamed: []StoreRename{{"old", "new"}, {"white", "blue"}, {"black", "orange"}, {"fun", "boring"}},
+			},
+			expectAdd:    []toAdd{{"foo"}, {"bar"}, {"baz"}},
+			expectDelete: []toDelete{{"four", true}, {"six", false}, {"baz", false}},
+			expectRename: []toRename{{"white", ""}, {"blue", "white"}, {"boring", "fun"}, {"missing", ""}},
+		},
 	}
 
-	for _, test := range testCases {
-		end := types.PrefixEndBytes(test.prefix)
-		s.Require().Equal(test.expected, end)
+	for name, tc := range cases {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			for _, r := range tc.expectAdd {
+				assert.Equal(t, tc.upgrades.IsAdded(r.key), true)
+			}
+			for _, d := range tc.expectDelete {
+				assert.Equal(t, tc.upgrades.IsDeleted(d.key), d.delete)
+			}
+			for _, r := range tc.expectRename {
+				assert.Equal(t, tc.upgrades.RenamedFrom(r.newkey), r.result)
+			}
+		})
 	}
 }
 
-func (s *storeTestSuite) TestCommitID() {
-	var empty types.CommitID
-	s.Require().True(empty.IsZero())
+func TestCommitID(t *testing.T) {
+	t.Parallel()
+	require.True(t, CommitID{}.IsZero())
+	require.False(t, CommitID{Version: int64(1)}.IsZero())
+	require.False(t, CommitID{Hash: []byte("x")}.IsZero())
+	require.Equal(t, "CommitID{[120 120 120 120]:64}", CommitID{Version: int64(100), Hash: []byte("xxxx")}.String())
+}
 
-	nonempty := types.CommitID{
-		Version: 1,
-		Hash:    []byte("testhash"),
+func TestKVStoreKey(t *testing.T) {
+	t.Parallel()
+	key := NewKVStoreKey("test")
+	require.Equal(t, "test", key.name)
+	require.Equal(t, key.name, key.Name())
+	require.Equal(t, fmt.Sprintf("KVStoreKey{%p, test}", key), key.String())
+}
+
+func TestNilKVStoreKey(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		_ = NewKVStoreKey("")
+	}, "setting an empty key should panic")
+}
+
+func TestTransientStoreKey(t *testing.T) {
+	t.Parallel()
+	key := NewTransientStoreKey("test")
+	require.Equal(t, "test", key.name)
+	require.Equal(t, key.name, key.Name())
+	require.Equal(t, fmt.Sprintf("TransientStoreKey{%p, test}", key), key.String())
+}
+
+func TestMemoryStoreKey(t *testing.T) {
+	t.Parallel()
+	key := NewMemoryStoreKey("test")
+	require.Equal(t, "test", key.name)
+	require.Equal(t, key.name, key.Name())
+	require.Equal(t, fmt.Sprintf("MemoryStoreKey{%p, test}", key), key.String())
+}
+
+func TestTraceContext_Clone(t *testing.T) {
+	tests := []struct {
+		name string
+		tc   TraceContext
+		want TraceContext
+	}{
+		{
+			"nil TraceContext yields empty TraceContext",
+			nil,
+			TraceContext{},
+		},
+		{
+			"non-nil TraceContext yields equal TraceContext",
+			TraceContext{
+				"value": 42,
+			},
+			TraceContext{
+				"value": 42,
+			},
+		},
+		{
+			"non-nil TraceContext yields equal TraceContext, for more than one key",
+			TraceContext{
+				"value":   42,
+				"another": 24,
+				"weird":   "string",
+			},
+			TraceContext{
+				"value":   42,
+				"another": 24,
+				"weird":   "string",
+			},
+		},
 	}
-	s.Require().False(nonempty.IsZero())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.tc.Clone())
+		})
+	}
 }
 
-func (s *storeTestSuite) TestNewTransientStoreKeys() {
-	s.Require().Equal(map[string]*types.TransientStoreKey{}, sdk.NewTransientStoreKeys())
-	s.Require().Equal(1, len(sdk.NewTransientStoreKeys("one")))
+func TestTraceContext_Clone_is_deep(t *testing.T) {
+	original := TraceContext{
+		"value":   42,
+		"another": 24,
+		"weird":   "string",
+	}
+
+	clone := original.Clone()
+
+	clone["other"] = true
+
+	require.NotEqual(t, original, clone)
 }
 
-func (s *storeTestSuite) TestNewInfiniteGasMeter() {
-	gm := sdk.NewInfiniteGasMeter()
-	s.Require().NotNil(gm)
-	_, ok := gm.(types.GasMeter) //nolint:gosimple
-	s.Require().True(ok)
+func TestTraceContext_Merge(t *testing.T) {
+	tests := []struct {
+		name  string
+		tc    TraceContext
+		other TraceContext
+		want  TraceContext
+	}{
+		{
+			"tc is nil, other is empty, yields an empty TraceContext",
+			nil,
+			TraceContext{},
+			TraceContext{},
+		},
+		{
+			"tc is nil, other is nil, yields an empty TraceContext",
+			nil,
+			nil,
+			TraceContext{},
+		},
+		{
+			"tc is not nil, other is nil, yields tc",
+			TraceContext{
+				"data": 42,
+			},
+			nil,
+			TraceContext{
+				"data": 42,
+			},
+		},
+		{
+			"tc is not nil, other is not nil, yields tc + other",
+			TraceContext{
+				"data": 42,
+			},
+			TraceContext{
+				"data2": 42,
+			},
+			TraceContext{
+				"data":  42,
+				"data2": 42,
+			},
+		},
+		{
+			"tc is not nil, other is not nil, other updates value in tc, yields tc updated with value from other",
+			TraceContext{
+				"data": 42,
+			},
+			TraceContext{
+				"data": 24,
+			},
+			TraceContext{
+				"data": 24,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.tc.Merge(tt.other))
+		})
+	}
 }
 
-func (s *storeTestSuite) TestStoreTypes() {
-	s.Require().Equal(sdk.InclusiveEndBytes([]byte("endbytes")), types.InclusiveEndBytes([]byte("endbytes")))
+func TestNewTransientStoreKeys(t *testing.T) {
+	assert.DeepEqual(t, map[string]*TransientStoreKey{}, NewTransientStoreKeys())
+	assert.DeepEqual(t, 1, len(NewTransientStoreKeys("one")))
 }
 
-func (s *storeTestSuite) TestDiffKVStores() {
-	store1, store2 := s.initTestStores()
-	// Two equal stores
-	k1, v1 := []byte("k1"), []byte("v1")
-	store1.Set(k1, v1)
-	store2.Set(k1, v1)
-
-	s.checkDiffResults(store1, store2)
-
-	// delete k1 from store2, which is now empty
-	store2.Delete(k1)
-	s.checkDiffResults(store1, store2)
-
-	// set k1 in store2, different value than what store1 holds for k1
-	v2 := []byte("v2")
-	store2.Set(k1, v2)
-	s.checkDiffResults(store1, store2)
-
-	// add k2 to store2
-	k2 := []byte("k2")
-	store2.Set(k2, v2)
-	s.checkDiffResults(store1, store2)
-
-	// Reset stores
-	store1.Delete(k1)
-	store2.Delete(k1)
-	store2.Delete(k2)
-
-	// Same keys, different value. Comparisons will be nil as prefixes are skipped.
-	prefix := []byte("prefix:")
-	k1Prefixed := append(prefix, k1...) //nolint:gocritic // append is fine here
-	store1.Set(k1Prefixed, v1)
-	store2.Set(k1Prefixed, v2)
-	s.checkDiffResults(store1, store2)
+func TestNewInfiniteGasMeter(t *testing.T) {
+	gm := NewInfiniteGasMeter()
+	require.NotNil(t, gm)
 }
 
-func (s *storeTestSuite) initTestStores() (types.KVStore, types.KVStore) {
-	db := dbm.NewMemDB()
-	ms := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
-
-	key1 := types.NewKVStoreKey("store1")
-	key2 := types.NewKVStoreKey("store2")
-	s.Require().NotPanics(func() { ms.MountStoreWithDB(key1, types.StoreTypeIAVL, db) })
-	s.Require().NotPanics(func() { ms.MountStoreWithDB(key2, types.StoreTypeIAVL, db) })
-	s.Require().NoError(ms.LoadLatestVersion())
-	return ms.GetKVStore(key1), ms.GetKVStore(key2)
-}
-
-func (s *storeTestSuite) checkDiffResults(store1, store2 types.KVStore) {
-	kvAs1, kvBs1 := sdk.DiffKVStores(store1, store2, nil)
-	kvAs2, kvBs2 := sdk.DiffKVStores(store1, store2, nil)
-	s.Require().Equal(kvAs1, kvAs2)
-	s.Require().Equal(kvBs1, kvBs2)
+func TestStoreTypes(t *testing.T) {
+	assert.DeepEqual(t, InclusiveEndBytes([]byte("endbytes")), InclusiveEndBytes([]byte("endbytes")))
 }

@@ -2,41 +2,66 @@ package types
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
-	"time"
-
-	log "github.com/tendermint/tendermint/libs/log"
-
-	"github.com/cosmos/cosmos-sdk/types/kv"
+	"sort"
+	"strings"
 )
 
-// SortedJSON takes any JSON and returns it sorted by keys. Also, all white-spaces
-// are removed.
-// This method can be used to canonicalize JSON to be returned by GetSignBytes,
-// e.g. for the ledger integration.
-// If the passed JSON isn't valid it will return an error.
-func SortJSON(toSortJSON []byte) ([]byte, error) {
-	var c interface{}
-	err := json.Unmarshal(toSortJSON, &c)
-	if err != nil {
-		return nil, err
-	}
-	js, err := json.Marshal(c)
-	if err != nil {
-		return nil, err
-	}
-	return js, nil
+// KVStorePrefixIterator iterates over all the keys with a certain prefix in ascending order
+func KVStorePrefixIterator(kvs KVStore, prefix []byte) Iterator {
+	return kvs.Iterator(prefix, PrefixEndBytes(prefix))
 }
 
-// MustSortJSON is like SortJSON but panic if an error occurs, e.g., if
-// the passed JSON isn't valid.
-func MustSortJSON(toSortJSON []byte) []byte {
-	js, err := SortJSON(toSortJSON)
-	if err != nil {
-		panic(err)
+// KVStoreReversePrefixIterator iterates over all the keys with a certain prefix in descending order.
+func KVStoreReversePrefixIterator(kvs KVStore, prefix []byte) Iterator {
+	return kvs.ReverseIterator(prefix, PrefixEndBytes(prefix))
+}
+
+// PrefixEndBytes returns the []byte that would end a
+// range query for all []byte with a certain prefix
+// Deals with last byte of prefix being FF without overflowing
+func PrefixEndBytes(prefix []byte) []byte {
+	if len(prefix) == 0 {
+		return nil
 	}
-	return js
+
+	end := make([]byte, len(prefix))
+	copy(end, prefix)
+
+	for {
+		if end[len(end)-1] != byte(255) {
+			end[len(end)-1]++
+			break
+		}
+
+		end = end[:len(end)-1]
+
+		if len(end) == 0 {
+			end = nil
+			break
+		}
+	}
+
+	return end
+}
+
+// InclusiveEndBytes returns the []byte that would end a
+// range query such that the input would be included
+func InclusiveEndBytes(inclusiveBytes []byte) []byte {
+	return append(inclusiveBytes, byte(0x00))
+}
+
+// assertNoCommonPrefix will panic if there are two keys: k1 and k2 in keys, such that
+// k1 is a prefix of k2
+func assertNoCommonPrefix(keys []string) {
+	sorted := make([]string, len(keys))
+	copy(sorted, keys)
+	sort.Strings(sorted)
+	for i := 1; i < len(sorted); i++ {
+		if strings.HasPrefix(sorted[i], sorted[i-1]) {
+			panic(fmt.Sprint("Potential key collision between KVStores:", sorted[i], " - ", sorted[i-1]))
+		}
+	}
 }
 
 // Uint64ToBigEndian - marshals uint64 to a bigendian byte slice so it can be sorted
@@ -56,89 +81,14 @@ func BigEndianToUint64(bz []byte) uint64 {
 	return binary.BigEndian.Uint64(bz)
 }
 
-// Slight modification of the RFC3339Nano but it right pads all zeros and drops the time zone info
-const SortableTimeFormat = "2006-01-02T15:04:05.000000000"
-
-// Formats a time.Time into a []byte that can be sorted
-func FormatTimeBytes(t time.Time) []byte {
-	return []byte(FormatTimeString(t))
-}
-
-// Formats a time.Time into a string
-func FormatTimeString(t time.Time) string {
-	return t.UTC().Round(0).Format(SortableTimeFormat)
-}
-
-// Parses a []byte encoded using FormatTimeKey back into a time.Time
-func ParseTimeBytes(bz []byte) (time.Time, error) {
-	return ParseTime(bz)
-}
-
-// Parses an encoded type using FormatTimeKey back into a time.Time
-func ParseTime(T any) (time.Time, error) { //nolint:gocritic
-	var (
-		result time.Time
-		err    error
-	)
-
-	switch t := T.(type) {
-	case time.Time:
-		result, err = t, nil
-	case []byte:
-		result, err = time.Parse(SortableTimeFormat, string(t))
-	case string:
-		result, err = time.Parse(SortableTimeFormat, t)
-	default:
-		return time.Time{}, fmt.Errorf("unexpected type %T", t)
+// SliceContains implements a generic function for checking if a slice contains
+// a certain value.
+func SliceContains[T comparable](elements []T, v T) bool {
+	for _, s := range elements {
+		if v == s {
+			return true
+		}
 	}
 
-	if err != nil {
-		return result, err
-	}
-
-	return result.UTC().Round(0), nil
-}
-
-// copy bytes
-func CopyBytes(bz []byte) (ret []byte) {
-	if bz == nil {
-		return nil
-	}
-	ret = make([]byte, len(bz))
-	copy(ret, bz)
-	return ret
-}
-
-// AppendLengthPrefixedBytes combines the slices of bytes to one slice of bytes.
-func AppendLengthPrefixedBytes(args ...[]byte) []byte {
-	length := 0
-	for _, v := range args {
-		length += len(v)
-	}
-	res := make([]byte, length)
-
-	length = 0
-	for _, v := range args {
-		copy(res[length:length+len(v)], v)
-		length += len(v)
-	}
-
-	return res
-}
-
-// ParseLengthPrefixedBytes panics when store key length is not equal to the given length.
-func ParseLengthPrefixedBytes(key []byte, startIndex int, sliceLength int) ([]byte, int) {
-	neededLength := startIndex + sliceLength
-	endIndex := neededLength - 1
-	kv.AssertKeyAtLeastLength(key, neededLength)
-	byteSlice := key[startIndex:neededLength]
-
-	return byteSlice, endIndex
-}
-
-// LogDeferred logs an error in a deferred function call if the returned error is non-nil.
-func LogDeferred(logger log.Logger, f func() error) {
-	if err := f(); err != nil {
-		logger.Error(err.Error())
-	}
+	return false
 }
