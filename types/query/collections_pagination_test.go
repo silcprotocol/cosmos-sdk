@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"cosmossdk.io/collections"
-	"cosmossdk.io/core/store"
 	db "github.com/cosmos/cosmos-db"
 	"github.com/stretchr/testify/require"
+
+	"cosmossdk.io/collections"
+	"cosmossdk.io/core/store"
 )
 
 func TestCollectionPagination(t *testing.T) {
@@ -48,7 +49,7 @@ func TestCollectionPagination(t *testing.T) {
 	type test struct {
 		req        *PageRequest
 		expResp    *PageResponse
-		filter     func(key uint64, value uint64) bool
+		filter     func(key, value uint64) (bool, error)
 		expResults []collections.KeyValue[uint64, uint64]
 		wantErr    error
 	}
@@ -82,6 +83,16 @@ func TestCollectionPagination(t *testing.T) {
 			},
 			expResults: createResults(299, 200),
 		},
+		"with key and reverse": {
+			req: &PageRequest{
+				Key:     encodeKey(199),
+				Reverse: true,
+			},
+			expResp: &PageResponse{
+				NextKey: encodeKey(99),
+			},
+			expResults: createResults(199, 100),
+		},
 		"with offset and count total": {
 			req: &PageRequest{
 				Offset:     50,
@@ -101,8 +112,8 @@ func TestCollectionPagination(t *testing.T) {
 			expResp: &PageResponse{
 				NextKey: encodeKey(5),
 			},
-			filter: func(key uint64, value uint64) bool {
-				return key%2 == 0
+			filter: func(key, value uint64) (bool, error) {
+				return key%2 == 0, nil
 			},
 			expResults: []collections.KeyValue[uint64, uint64]{
 				{Key: 0, Value: 0},
@@ -116,27 +127,30 @@ func TestCollectionPagination(t *testing.T) {
 				Limit: 3,
 			},
 			expResp: &PageResponse{
-				NextKey: encodeKey(7),
+				NextKey: encodeKey(5),
 			},
-			filter: func(key uint64, value uint64) bool {
-				return key%2 == 0
+			filter: func(key, value uint64) (bool, error) {
+				return key%2 == 0, nil
 			},
 			expResults: []collections.KeyValue[uint64, uint64]{
 				{Key: 2, Value: 2},
 				{Key: 4, Value: 4},
-				{Key: 6, Value: 6},
 			},
-		},
-		"error offset > total items": {
-			req:     &PageRequest{Offset: 500},
-			wantErr: collections.ErrInvalidIterator,
 		},
 	}
 
 	for name, tc := range tcs {
 		tc := tc
 		t.Run(name, func(t *testing.T) {
-			gotResults, gotResponse, err := CollectionFilteredPaginate(ctx, m, tc.req, tc.filter)
+			gotResults, gotResponse, err := CollectionFilteredPaginate(
+				ctx,
+				m,
+				tc.req,
+				tc.filter,
+				func(key, value uint64) (collections.KeyValue[uint64, uint64], error) {
+					return collections.KeyValue[uint64, uint64]{Key: key, Value: value}, nil
+				},
+			)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				return
@@ -156,50 +170,28 @@ func (t testStore) OpenKVStore(ctx context.Context) store.KVStore {
 	return t
 }
 
-func (t testStore) Get(key []byte) []byte {
-	res, err := t.db.Get(key)
-	if err != nil {
-		panic(err)
-	}
-	return res
+func (t testStore) Get(key []byte) ([]byte, error) {
+	return t.db.Get(key)
 }
 
-func (t testStore) Has(key []byte) bool {
-	res, err := t.db.Has(key)
-	if err != nil {
-		panic(err)
-	}
-	return res
+func (t testStore) Has(key []byte) (bool, error) {
+	return t.db.Has(key)
 }
 
-func (t testStore) Set(key, value []byte) {
-	err := t.db.Set(key, value)
-	if err != nil {
-		panic(err)
-	}
+func (t testStore) Set(key, value []byte) error {
+	return t.db.Set(key, value)
 }
 
-func (t testStore) Delete(key []byte) {
-	err := t.db.Delete(key)
-	if err != nil {
-		panic(err)
-	}
+func (t testStore) Delete(key []byte) error {
+	return t.db.Delete(key)
 }
 
-func (t testStore) Iterator(start, end []byte) store.Iterator {
-	res, err := t.db.Iterator(start, end)
-	if err != nil {
-		panic(err)
-	}
-	return res
+func (t testStore) Iterator(start, end []byte) (store.Iterator, error) {
+	return t.db.Iterator(start, end)
 }
 
-func (t testStore) ReverseIterator(start, end []byte) store.Iterator {
-	res, err := t.db.ReverseIterator(start, end)
-	if err != nil {
-		panic(err)
-	}
-	return res
+func (t testStore) ReverseIterator(start, end []byte) (store.Iterator, error) {
+	return t.db.ReverseIterator(start, end)
 }
 
 var _ store.KVStore = testStore{}

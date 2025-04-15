@@ -4,14 +4,16 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	errorsmod "cosmossdk.io/errors"
+	storetypes "cosmossdk.io/store/types"
+
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/group/errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAutoUInt64PrefixScan(t *testing.T) {
@@ -22,7 +24,7 @@ func TestAutoUInt64PrefixScan(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := NewMockContext()
-	store := ctx.KVStore(sdk.NewKVStoreKey("test"))
+	store := ctx.KVStore(storetypes.NewKVStoreKey("test"))
 
 	metadata := []byte("metadata")
 	t1 := testdata.TableModel{
@@ -50,8 +52,8 @@ func TestAutoUInt64PrefixScan(t *testing.T) {
 		start, end uint64
 		expResult  []testdata.TableModel
 		expRowIDs  []RowID
-		expError   *sdkerrors.Error //nolint:staticcheck // SA1019: sdkerrors.Error is deprecated: the type has been moved to cosmossdk.io/errors module. Please use the above module instead of this package
-		method     func(store sdk.KVStore, start uint64, end uint64) (Iterator, error)
+		expError   *errorsmod.Error
+		method     func(store storetypes.KVStore, start, end uint64) (Iterator, error)
 	}{
 		"first element": {
 			start:     1,

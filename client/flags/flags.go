@@ -6,19 +6,18 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	tmcli "github.com/tendermint/tendermint/libs/cli"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 )
 
-const (
-	// DefaultGasAdjustment is applied to gas estimates to avoid tx execution
-	// failures due to state changes that might occur between the tx simulation
-	// and the actual run.
-	DefaultGasAdjustment = 1.3
-	DefaultGasLimit      = 200000
+// DefaultGasAdjustment is applied to gas estimates to avoid tx execution
+// failures due to state changes that might occur between the tx simulation
+// and the actual run.
+var DefaultGasAdjustment = 1.0
 
-	FlagAuto = "auto"
+const (
+	DefaultGasLimit = 200000
+	GasFlagAuto     = "auto"
 
 	// DefaultKeyringBackend
 	DefaultKeyringBackend = keyring.BackendOS
@@ -36,13 +35,15 @@ const (
 	SignModeLegacyAminoJSON = "amino-json"
 	// SignModeDirectAux is the value of the --sign-mode flag for SIGN_MODE_DIRECT_AUX
 	SignModeDirectAux = "direct-aux"
+	// SignModeTextual is the value of the --sign-mode flag for SIGN_MODE_TEXTUAL.
+	SignModeTextual = "textual"
 	// SignModeEIP191 is the value of the --sign-mode flag for SIGN_MODE_EIP_191
 	SignModeEIP191 = "eip-191"
 )
 
 // List of CLI flags
 const (
-	FlagHome             = tmcli.HomeFlag
+	FlagHome             = "home"
 	FlagKeyringDir       = "keyring-dir"
 	FlagUseLedger        = "ledger"
 	FlagChainID          = "chain-id"
@@ -75,18 +76,26 @@ const (
 	FlagCountTotal       = "count-total"
 	FlagTimeoutHeight    = "timeout-height"
 	FlagKeyAlgorithm     = "algo"
+	FlagKeyType          = "key-type"
 	FlagFeePayer         = "fee-payer"
 	FlagFeeGranter       = "fee-granter"
 	FlagReverse          = "reverse"
 	FlagTip              = "tip"
 	FlagAux              = "aux"
+	FlagInitHeight       = "initial-height"
 	// FlagOutput is the flag to set the output format.
 	// This differs from FlagOutputDocument that is used to set the output file.
-	FlagOutput = tmcli.OutputFlag
+	FlagOutput = "output"
+	// Logging flags
+	FlagLogLevel   = "log_level"
+	FlagLogFormat  = "log_format"
+	FlagLogNoColor = "log_no_color"
+)
 
-	// Tendermint logging flags
-	FlagLogLevel  = "log_level"
-	FlagLogFormat = "log_format"
+// List of supported output formats
+const (
+	OutputFormatJSON = "json"
+	OutputFormatText = "text"
 )
 
 // LineBreak can be included in a command list to provide a blank line
@@ -95,7 +104,7 @@ var LineBreak = &cobra.Command{Run: func(*cobra.Command, []string) {}}
 
 // AddQueryFlagsToCmd adds common flags to a module query command.
 func AddQueryFlagsToCmd(cmd *cobra.Command) {
-	cmd.Flags().String(FlagNode, "tcp://localhost:26657", "<host>:<port> to Tendermint RPC interface for this chain")
+	cmd.Flags().String(FlagNode, "tcp://localhost:26657", "<host>:<port> to CometBFT RPC interface for this chain")
 	cmd.Flags().String(FlagGRPC, "", "the gRPC endpoint to use for this chain")
 	cmd.Flags().Bool(FlagGRPCInsecure, false, "allow gRPC over insecure channels, if not the server must use TLS")
 	cmd.Flags().Int64(FlagHeight, 0, "Use a specific height to query state at (this can error if the node is pruning state)")
@@ -109,14 +118,16 @@ func AddQueryFlagsToCmd(cmd *cobra.Command) {
 // AddTxFlagsToCmd adds common flags to a module tx command.
 func AddTxFlagsToCmd(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.StringP(FlagOutput, "o", "json", "Output format (text|json)")
-	f.String(FlagFrom, "", "Name or address of private key with which to sign")
+	f.StringP(FlagOutput, "o", OutputFormatJSON, "Output format (text|json)")
+	if cmd.Flag(FlagFrom) == nil { // avoid flag redefinition when it's already been added by AutoCLI
+		f.String(FlagFrom, "", "Name or address of private key with which to sign")
+	}
 	f.Uint64P(FlagAccountNumber, "a", 0, "The account number of the signing account (offline mode only)")
 	f.Uint64P(FlagSequence, "s", 0, "The sequence number of the signing account (offline mode only)")
 	f.String(FlagNote, "", "Note to add a description to the transaction (previously --memo)")
 	f.String(FlagFees, "", "Fees to pay along with transaction; eg: 10uatom")
 	f.String(FlagGasPrices, "", "Gas prices in decimal format to determine the transaction fee (e.g. 0.1uatom)")
-	f.String(FlagNode, "tcp://localhost:26657", "<host>:<port> to tendermint rpc interface for this chain")
+	f.String(FlagNode, "tcp://localhost:26657", "<host>:<port> to CometBFT rpc interface for this chain")
 	f.Bool(FlagUseLedger, false, "Use a connected Ledger device")
 	f.Float64(FlagGasAdjustment, DefaultGasAdjustment, "adjustment factor to be multiplied against the estimate returned by the tx simulation; if the gas limit is set manually this flag is ignored ")
 	f.StringP(FlagBroadcastMode, "b", BroadcastSync, "Transaction broadcasting mode (sync|async)")
@@ -124,7 +135,7 @@ func AddTxFlagsToCmd(cmd *cobra.Command) {
 	f.Bool(FlagGenerateOnly, false, "Build an unsigned transaction and write it to STDOUT (when enabled, the local Keybase only accessed when providing a key name)")
 	f.Bool(FlagOffline, false, "Offline mode (does not allow any online functionality)")
 	f.BoolP(FlagSkipConfirmation, "y", false, "Skip tx broadcasting prompt confirmation")
-	f.String(FlagSignMode, "", "Choose sign mode (direct|amino-json|direct-aux), this is an advanced feature")
+	f.String(FlagSignMode, "", "Choose sign mode (direct|amino-json|direct-aux|textual), this is an advanced feature")
 	f.Uint64(FlagTimeoutHeight, 0, "Set a block timeout height to prevent the tx from being committed past a certain height")
 	f.String(FlagFeePayer, "", "Fee payer pays fees for the transaction instead of deducting from the signer")
 	f.String(FlagFeeGranter, "", "Fee granter grants fees for the transaction")
@@ -133,7 +144,7 @@ func AddTxFlagsToCmd(cmd *cobra.Command) {
 	f.String(FlagChainID, "", "The network chain ID")
 	// --gas can accept integers and "auto"
 	f.String(FlagGas, "", fmt.Sprintf("gas limit to set per-transaction; set to %q to calculate sufficient gas automatically. Note: %q option doesn't always report accurate results. Set a valid coin value to adjust the result. Can be used instead of %q. (default %d)",
-		FlagAuto, FlagAuto, FlagFees, DefaultGasLimit))
+		GasFlagAuto, GasFlagAuto, FlagFees, DefaultGasLimit))
 
 	AddKeyringFlags(f)
 }
@@ -162,7 +173,7 @@ type GasSetting struct {
 
 func (v *GasSetting) String() string {
 	if v.Simulate {
-		return FlagAuto
+		return GasFlagAuto
 	}
 
 	return strconv.FormatUint(v.Gas, 10)
@@ -177,13 +188,13 @@ func ParseGasSetting(gasStr string) (GasSetting, error) {
 	case "":
 		return GasSetting{false, DefaultGasLimit}, nil
 
-	case FlagAuto:
+	case GasFlagAuto:
 		return GasSetting{true, 0}, nil
 
 	default:
 		gas, err := strconv.ParseUint(gasStr, 10, 64)
 		if err != nil {
-			return GasSetting{}, fmt.Errorf("gas must be either integer or %s", FlagAuto)
+			return GasSetting{}, fmt.Errorf("gas must be either integer or %s", GasFlagAuto)
 		}
 
 		return GasSetting{false, gas}, nil

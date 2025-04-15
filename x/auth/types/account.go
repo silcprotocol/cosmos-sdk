@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tendermint/tendermint/crypto"
+	"github.com/cometbft/cometbft/crypto"
 
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
 )
 
 var (
@@ -22,9 +23,7 @@ var (
 	_ sdk.ModuleAccountI                 = (*ModuleAccount)(nil)
 )
 
-// NewBaseAccount creates a new BaseAccount object
-//
-//nolint:interfacer
+// NewBaseAccount creates a new BaseAccount object.
 func NewBaseAccount(address sdk.AccAddress, pubKey cryptotypes.PubKey, accountNumber, sequence uint64) *BaseAccount {
 	acc := &BaseAccount{
 		Address:       address.String(),
@@ -156,7 +155,7 @@ func NewModuleAddressOrBech32Address(input string) sdk.AccAddress {
 
 // NewModuleAddress creates an AccAddress from the hash of the module's name
 func NewModuleAddress(name string) sdk.AccAddress {
-	return sdk.AccAddress(crypto.AddressHash([]byte(name)))
+	return address.Module(name)
 }
 
 // NewEmptyModuleAccount creates a empty ModuleAccount from a string
@@ -217,6 +216,10 @@ func (ma ModuleAccount) SetPubKey(pubKey cryptotypes.PubKey) error {
 func (ma ModuleAccount) Validate() error {
 	if strings.TrimSpace(ma.Name) == "" {
 		return errors.New("module account name cannot be blank")
+	}
+
+	if ma.BaseAccount == nil {
+		return errors.New("uninitialized ModuleAccount: BaseAccount is nil")
 	}
 
 	if ma.Address != sdk.AccAddress(crypto.AddressHash([]byte(ma.Name))).String() {

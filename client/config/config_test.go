@@ -5,14 +5,15 @@ import (
 	"os"
 	"testing"
 
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -24,12 +25,12 @@ const (
 // initClientContext initiates client Context for tests
 func initClientContext(t *testing.T, envVar string) (client.Context, func()) {
 	home := t.TempDir()
-	chainId := "test-chain" //nolint:revive
+	chainID := "test-chain"
 	clientCtx := client.Context{}.
 		WithHomeDir(home).
 		WithViper("").
 		WithCodec(codec.NewProtoCodec(codectypes.NewInterfaceRegistry())).
-		WithChainID(chainId)
+		WithChainID(chainID)
 
 	require.NoError(t, clientCtx.Viper.BindEnv(nodeEnv))
 	if envVar != "" {
@@ -38,7 +39,7 @@ func initClientContext(t *testing.T, envVar string) (client.Context, func()) {
 
 	clientCtx, err := config.ReadFromClientConfig(clientCtx)
 	require.NoError(t, err)
-	require.Equal(t, clientCtx.ChainID, chainId)
+	require.Equal(t, clientCtx.ChainID, chainID)
 
 	return clientCtx, func() { _ = os.RemoveAll(home) }
 }

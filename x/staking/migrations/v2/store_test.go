@@ -7,6 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	storetypes "cosmossdk.io/store/types"
+
+	"github.com/cosmos/cosmos-sdk/codec/address"
 	sdktestuil "github.com/cosmos/cosmos-sdk/testutil"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -17,8 +20,8 @@ import (
 )
 
 func TestStoreMigration(t *testing.T) {
-	stakingKey := sdk.NewKVStoreKey("staking")
-	tStakingKey := sdk.NewTransientStoreKey("transient_test")
+	stakingKey := storetypes.NewKVStoreKey("staking")
+	tStakingKey := storetypes.NewTransientStoreKey("transient_test")
 	ctx := sdktestuil.DefaultContext(stakingKey, tStakingKey)
 	store := ctx.KVStore(stakingKey)
 
@@ -62,7 +65,7 @@ func TestStoreMigration(t *testing.T) {
 		{
 			"ValidatorsByPowerIndexKey",
 			v1.GetValidatorsByPowerIndexKey(val),
-			types.GetValidatorsByPowerIndexKey(val, sdk.DefaultPowerReduction),
+			types.GetValidatorsByPowerIndexKey(val, sdk.DefaultPowerReduction, address.NewBech32Codec("cosmosvaloper")),
 		},
 		{
 			"DelegationKey",
@@ -112,7 +115,7 @@ func TestStoreMigration(t *testing.T) {
 		{
 			"HistoricalInfoKey",
 			v1.GetHistoricalInfoKey(4),
-			types.GetHistoricalInfoKey(4),
+			v2.GetHistoricalInfoKey(4),
 		},
 	}
 
@@ -122,7 +125,7 @@ func TestStoreMigration(t *testing.T) {
 	}
 
 	// Run migrations.
-	err := v2.MigrateStore(ctx, stakingKey)
+	err := v2.MigrateStore(ctx, store)
 	require.NoError(t, err)
 
 	// Make sure the new keys are set and old keys are deleted.

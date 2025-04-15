@@ -6,9 +6,9 @@ package types
 import (
 	context "context"
 	fmt "fmt"
+	types "github.com/cometbft/cometbft/proto/tendermint/types"
 	grpc1 "github.com/cosmos/gogoproto/grpc"
 	proto "github.com/cosmos/gogoproto/proto"
-	types "github.com/tendermint/tendermint/proto/tendermint/types"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -155,7 +155,7 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type QueryClient interface {
-	// Params queries the parameters of x/consensus_param module.
+	// Params queries the parameters of x/consensus module.
 	Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error)
 }
 
@@ -178,7 +178,7 @@ func (c *queryClient) Params(ctx context.Context, in *QueryParamsRequest, opts .
 
 // QueryServer is the server API for Query service.
 type QueryServer interface {
-	// Params queries the parameters of x/consensus_param module.
+	// Params queries the parameters of x/consensus module.
 	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
 }
 

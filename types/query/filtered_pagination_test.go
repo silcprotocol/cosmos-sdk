@@ -4,8 +4,10 @@ import (
 	"fmt"
 
 	"cosmossdk.io/math"
+	"cosmossdk.io/store/prefix"
+	storetypes "cosmossdk.io/store/types"
+
 	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/store/prefix"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/address"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -31,7 +33,7 @@ func (s *paginationTestSuite) TestFilteredPaginations() {
 	addr1 := sdk.AccAddress([]byte("addr1"))
 	acc1 := s.accountKeeper.NewAccountWithAddress(s.ctx, addr1)
 	s.accountKeeper.SetAccount(s.ctx, acc1)
-	s.Require().NoError(testutil.FundAccount(s.bankKeeper, s.ctx, addr1, balances))
+	s.Require().NoError(testutil.FundAccount(s.ctx, s.bankKeeper, addr1, balances))
 	store := s.ctx.KVStore(s.app.UnsafeFindStoreKey(types.StoreKey))
 
 	// verify pagination with limit > total values
@@ -104,7 +106,7 @@ func (s *paginationTestSuite) TestReverseFilteredPaginations() {
 	addr1 := sdk.AccAddress([]byte("addr1"))
 	acc1 := s.accountKeeper.NewAccountWithAddress(s.ctx, addr1)
 	s.accountKeeper.SetAccount(s.ctx, acc1)
-	s.Require().NoError(testutil.FundAccount(s.bankKeeper, s.ctx, addr1, balances))
+	s.Require().NoError(testutil.FundAccount(s.ctx, s.bankKeeper, addr1, balances))
 	store := s.ctx.KVStore(s.app.UnsafeFindStoreKey(types.StoreKey))
 
 	// verify pagination with limit > total values
@@ -182,7 +184,7 @@ func (s *paginationTestSuite) TestFilteredPaginate() {
 	addr1 := sdk.AccAddress([]byte("addr1"))
 	acc1 := s.accountKeeper.NewAccountWithAddress(s.ctx, addr1)
 	s.accountKeeper.SetAccount(s.ctx, acc1)
-	err := testutil.FundAccount(s.bankKeeper, s.ctx, addr1, balances)
+	err := testutil.FundAccount(s.ctx, s.bankKeeper, addr1, balances)
 	if err != nil { // should return no error
 		fmt.Println(err)
 	}
@@ -193,7 +195,7 @@ func (s *paginationTestSuite) TestFilteredPaginate() {
 	accountStore := prefix.NewStore(balancesStore, address.MustLengthPrefix(addr1))
 
 	var balResult sdk.Coins
-	pageRes, err := query.FilteredPaginate(accountStore, pageReq, func(key []byte, value []byte, accumulate bool) (bool, error) {
+	pageRes, err := query.FilteredPaginate(accountStore, pageReq, func(key, value []byte, accumulate bool) (bool, error) {
 		var amount math.Int
 		err := amount.Unmarshal(value)
 		if err != nil {
@@ -219,12 +221,12 @@ func (s *paginationTestSuite) TestFilteredPaginate() {
 	// balances:<denom:"test0denom" amount:"250" > pagination:<next_key:"test1denom" total:5 >
 }
 
-func execFilterPaginate(store sdk.KVStore, pageReq *query.PageRequest, appCodec codec.Codec) (balances sdk.Coins, res *query.PageResponse, err error) {
+func execFilterPaginate(store storetypes.KVStore, pageReq *query.PageRequest, appCodec codec.Codec) (balances sdk.Coins, res *query.PageResponse, err error) {
 	balancesStore := prefix.NewStore(store, types.BalancesPrefix)
 	accountStore := prefix.NewStore(balancesStore, address.MustLengthPrefix(addr1))
 
 	var balResult sdk.Coins
-	res, err = query.FilteredPaginate(accountStore, pageReq, func(key []byte, value []byte, accumulate bool) (bool, error) {
+	res, err = query.FilteredPaginate(accountStore, pageReq, func(key, value []byte, accumulate bool) (bool, error) {
 		var amount math.Int
 		err := amount.Unmarshal(value)
 		if err != nil {
@@ -258,15 +260,15 @@ func (s *paginationTestSuite) TestFilteredPaginationsNextKey() {
 	addr1 := sdk.AccAddress([]byte("addr1"))
 	acc1 := s.accountKeeper.NewAccountWithAddress(s.ctx, addr1)
 	s.accountKeeper.SetAccount(s.ctx, acc1)
-	s.Require().NoError(testutil.FundAccount(s.bankKeeper, s.ctx, addr1, balances))
+	s.Require().NoError(testutil.FundAccount(s.ctx, s.bankKeeper, addr1, balances))
 	store := s.ctx.KVStore(s.app.UnsafeFindStoreKey(types.StoreKey))
 
-	execFilterPaginate := func(store sdk.KVStore, pageReq *query.PageRequest, appCodec codec.Codec) (balances sdk.Coins, res *query.PageResponse, err error) {
+	execFilterPaginate := func(store storetypes.KVStore, pageReq *query.PageRequest, appCodec codec.Codec) (balances sdk.Coins, res *query.PageResponse, err error) {
 		balancesStore := prefix.NewStore(store, types.BalancesPrefix)
 		accountStore := prefix.NewStore(balancesStore, address.MustLengthPrefix(addr1))
 
 		var balResult sdk.Coins
-		res, err = query.FilteredPaginate(accountStore, pageReq, func(key []byte, value []byte, accumulate bool) (bool, error) {
+		res, err = query.FilteredPaginate(accountStore, pageReq, func(key, value []byte, accumulate bool) (bool, error) {
 			var amount math.Int
 			err := amount.Unmarshal(value)
 			if err != nil {

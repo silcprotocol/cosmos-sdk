@@ -8,6 +8,7 @@
     * [Pull Request Templates](#pull-request-templates)
     * [Requesting Reviews](#requesting-reviews)
     * [Updating Documentation](#updating-documentation)
+    * [RFC & ADR](#RFC & ADR)
 * [Dependencies](#dependencies)
     * [`go.work`](#gowork)
     * [`go.mod`](#gomod)
@@ -163,6 +164,14 @@ If you open a PR on the Cosmos SDK, it is mandatory to update the relevant docum
 
 When writing documentation, follow the [Documentation Writing Guidelines](./docs/DOC_WRITING_GUIDELINES.md).
 
+### RFC & ADR
+
+Within the Cosmos SDK we have two forms of documenting decisions, Request For Comment (RFC) & Architecture Design Record (ADR). They perform two different functions. The process for assessing if something needs an RFC is located in the respective folders: 
+
+* [RFC Process](./docs/rfc/process.md)
+* [ADR Process](./docs/adr/process.md) 
+
+
 ## Dependencies
 
 We use [Go Modules](https://github.com/golang/go/wiki/Modules) to manage
@@ -186,13 +195,16 @@ For consistency between our CI and the local tests, `GOWORK=off` is set in the `
 
 When extracting a package to its own go modules, some extra steps are required, for keeping our CI checks and Dev UX:
 
+* Add a CHANGELOG.md / README.md under the new package folder
+* Add the package in [`labeler.yml`](./.github/labeler.yml)
 * Add the package in [`go.work.example`](./go.work.example)
 * Add weekly dependabot checks (see [dependabot.yml](./.github/dependabot.yml))
-* Pre-configure SonarCloud
+* Add tests to github workflow [test.yml](.github/workflows/test.yml) (under submodules)
+* Configure SonarCloud
     * Add `sonar-projects.properties` (see math [sonar-projects.properties](./math/sonar-projects.properties) for example)
     * Add a GitHub Workflow entry for running the scans (see [test.yml](.github/workflows/test.yml))
-    * Add an entry for skipping the tests (see [test-skip.yml](.github/workflows/test-skip.yml))
     * Ask the team to add the project to SonarCloud
+* (optional) Configure a `cosmossdk.io` vanity url by submitting a PR to [cosmos/vanity](https://github.com/cosmos/vanity).
 
 ## Protobuf
 
