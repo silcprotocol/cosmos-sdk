@@ -1,8 +1,9 @@
 package cmd
 
+// DONTCOVER
+
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -11,13 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 	tmconfig "github.com/tendermint/tendermint/config"
+	tmos "github.com/tendermint/tendermint/libs/os"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
 
-	"cosmossdk.io/math"
-
-	"cosmossdk.io/simapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -294,8 +293,8 @@ func initTestnetFiles(
 			valPubKeys[i],
 			sdk.NewCoin(sdk.DefaultBondDenom, valTokens),
 			stakingtypes.NewDescription(nodeDirName, "", "", "", ""),
-			stakingtypes.NewCommissionRates(math.LegacyOneDec(), math.LegacyOneDec(), math.LegacyOneDec()),
-			math.OneInt(),
+			stakingtypes.NewCommissionRates(sdk.OneDec(), sdk.OneDec(), sdk.OneDec()),
+			sdk.OneInt(),
 		)
 		if err != nil {
 			return err
@@ -315,8 +314,7 @@ func initTestnetFiles(
 			WithKeybase(kb).
 			WithTxConfig(clientCtx.TxConfig)
 
-		// When Textual is wired up, the context argument should be retrieved from the client context.
-		if err := tx.Sign(context.TODO(), txFactory, nodeDirName, txBuilder, true); err != nil {
+		if err := tx.Sign(txFactory, nodeDirName, txBuilder, true); err != nil {
 			return err
 		}
 
@@ -421,7 +419,7 @@ func collectGenFiles(
 			return err
 		}
 
-		nodeAppState, err := genutil.GenAppStateFromConfig(clientCtx.Codec, clientCtx.TxConfig, nodeConfig, initCfg, *genDoc, genBalIterator, genutiltypes.DefaultMessageValidator)
+		nodeAppState, err := genutil.GenAppStateFromConfig(clientCtx.Codec, clientCtx.TxConfig, nodeConfig, initCfg, *genDoc, genBalIterator)
 		if err != nil {
 			return err
 		}
@@ -467,13 +465,16 @@ func calculateIP(ip string, i int) (string, error) {
 }
 
 func writeFile(name string, dir string, contents []byte) error {
-	file := filepath.Join(dir, name)
+	writePath := filepath.Join(dir) //nolint:gocritic
+	file := filepath.Join(writePath, name)
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("could not create directory %q: %w", dir, err)
+	err := tmos.EnsureDir(writePath, 0o755)
+	if err != nil {
+		return err
 	}
 
-	if err := os.WriteFile(file, contents, 0o644); err != nil { //nolint: gosec
+	err = os.WriteFile(file, contents, 0o644) // nolint: gosec
+	if err != nil {
 		return err
 	}
 
@@ -482,7 +483,7 @@ func writeFile(name string, dir string, contents []byte) error {
 
 // startTestnet starts an in-process testnet
 func startTestnet(cmd *cobra.Command, args startArgs) error {
-	networkConfig := network.DefaultConfig(simapp.NewTestNetworkFixture)
+	networkConfig := network.DefaultConfig()
 
 	// Default networkConfig.ChainID is random, and we should only override it if chainID provided
 	// is non-empty

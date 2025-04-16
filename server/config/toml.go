@@ -70,12 +70,17 @@ inter-block-cache = {{ .BaseConfig.InterBlockCache }}
 # ["message.sender", "message.recipient"]
 index-events = [{{ range .BaseConfig.IndexEvents }}{{ printf "%q, " . }}{{end}}]
 
-# IavlCacheSize set the size of the iavl tree cache (in number of nodes).
+# IavlCacheSize set the size of the iavl tree cache. 
+# Default cache size is 50mb.
 iavl-cache-size = {{ .BaseConfig.IAVLCacheSize }}
 
-# IAVLDisableFastNode enables or disables the fast node feature of IAVL. 
+# IavlDisableFastNode enables or disables the fast node feature of IAVL. 
 # Default is false.
 iavl-disable-fastnode = {{ .BaseConfig.IAVLDisableFastNode }}
+
+# EXPERIMENTAL: IAVLLazyLoading enable/disable the lazy loading of iavl store.
+# Default is false.
+iavl-lazy-loading = {{ .BaseConfig.IAVLLazyLoading }}
 
 # AppDBBackend defines the database backend type to use for the application and snapshots DBs.
 # An empty string indicates that a fallback will be used.
@@ -147,6 +152,42 @@ rpc-max-body-bytes = {{ .API.RPCMaxBodyBytes }}
 
 # EnableUnsafeCORS defines if CORS should be enabled (unsafe - use it at your own risk).
 enabled-unsafe-cors = {{ .API.EnableUnsafeCORS }}
+
+###############################################################################
+###                           Rosetta Configuration                         ###
+###############################################################################
+
+[rosetta]
+
+# Enable defines if the Rosetta API server should be enabled.
+enable = {{ .Rosetta.Enable }}
+
+# Address defines the Rosetta API server to listen on.
+address = "{{ .Rosetta.Address }}"
+
+# Network defines the name of the blockchain that will be returned by Rosetta.
+blockchain = "{{ .Rosetta.Blockchain }}"
+
+# Network defines the name of the network that will be returned by Rosetta.
+network = "{{ .Rosetta.Network }}"
+
+# Retries defines the number of retries when connecting to the node before failing.
+retries = {{ .Rosetta.Retries }}
+
+# Offline defines if Rosetta server should run in offline mode.
+offline = {{ .Rosetta.Offline }}
+
+# EnableDefaultSuggestedFee defines if the server should suggest fee by default.
+# If 'construction/medata' is called without gas limit and gas price,
+# suggested fee based on gas-to-suggest and denom-to-suggest will be given.
+enable-fee-suggestion = {{ .Rosetta.EnableFeeSuggestion }}
+
+# GasToSuggest defines gas limit when calculating the fee
+gas-to-suggest = {{ .Rosetta.GasToSuggest }}
+
+# DenomToSuggest defines the defult denom for fee suggestion.
+# Price must be in minimum-gas-prices.
+denom-to-suggest = "{{ .Rosetta.DenomToSuggest }}"
 
 ###############################################################################
 ###                           gRPC Configuration                            ###
@@ -221,19 +262,6 @@ stop-node-on-error = "{{ .Streamers.File.StopNodeOnError }}"
 
 # fsync specifies if call fsync after writing the files.
 fsync = "{{ .Streamers.File.Fsync }}"
-
-###############################################################################
-###                         Mempool                                         ###
-###############################################################################
-
-[mempool]
-# Setting max-txs to 0 will allow for a unbounded amount of transactions in the mempool.
-# Setting max_txs to negative 1 (-1) will disable transactions from being inserted into the mempool.
-# Setting max_txs to a positive number (> 0) will limit the number of transactions in the mempool, by the specified amount.
-#
-# Note, this configuration only applies to SDK built-in app-side mempool
-# implementations.
-max-txs = "{{ .Mempool.MaxTxs }}"
 `
 
 var configTemplate *template.Template

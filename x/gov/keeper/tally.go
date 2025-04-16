@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -13,12 +12,12 @@ import (
 // voters
 func (keeper Keeper) Tally(ctx sdk.Context, proposal v1.Proposal) (passes bool, burnDeposits bool, tallyResults v1.TallyResult) {
 	results := make(map[v1.VoteOption]sdk.Dec)
-	results[v1.OptionYes] = math.LegacyZeroDec()
-	results[v1.OptionAbstain] = math.LegacyZeroDec()
-	results[v1.OptionNo] = math.LegacyZeroDec()
-	results[v1.OptionNoWithVeto] = math.LegacyZeroDec()
+	results[v1.OptionYes] = sdk.ZeroDec()
+	results[v1.OptionAbstain] = sdk.ZeroDec()
+	results[v1.OptionNo] = sdk.ZeroDec()
+	results[v1.OptionNoWithVeto] = sdk.ZeroDec()
 
-	totalVotingPower := math.LegacyZeroDec()
+	totalVotingPower := sdk.ZeroDec()
 	currValidators := make(map[string]v1.ValidatorGovInfo)
 
 	// fetch all the bonded validators, insert them into currValidators
@@ -27,7 +26,7 @@ func (keeper Keeper) Tally(ctx sdk.Context, proposal v1.Proposal) (passes bool, 
 			validator.GetOperator(),
 			validator.GetBondedTokens(),
 			validator.GetDelegatorShares(),
-			math.LegacyZeroDec(),
+			sdk.ZeroDec(),
 			v1.WeightedVoteOptions{},
 		)
 
@@ -89,7 +88,7 @@ func (keeper Keeper) Tally(ctx sdk.Context, proposal v1.Proposal) (passes bool, 
 		totalVotingPower = totalVotingPower.Add(votingPower)
 	}
 
-	tallyParams := keeper.GetParams(ctx)
+	tallyParams := keeper.GetTallyParams(ctx)
 	tallyResults = v1.NewTallyResultFromMap(results)
 
 	// TODO: Upgrade the spec to cover all of these cases & remove pseudocode.
@@ -106,7 +105,7 @@ func (keeper Keeper) Tally(ctx sdk.Context, proposal v1.Proposal) (passes bool, 
 	}
 
 	// If no one votes (everyone abstains), proposal fails
-	if totalVotingPower.Sub(results[v1.OptionAbstain]).Equal(math.LegacyZeroDec()) {
+	if totalVotingPower.Sub(results[v1.OptionAbstain]).Equal(sdk.ZeroDec()) {
 		return false, false, tallyResults
 	}
 

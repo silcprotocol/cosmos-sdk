@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/log"
-
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/tendermint/tendermint/libs/log"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -41,11 +40,6 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 
 // GrantAllowance creates a new grant
 func (k Keeper) GrantAllowance(ctx sdk.Context, granter, grantee sdk.AccAddress, feeAllowance feegrant.FeeAllowanceI) error {
-	// Checking for duplicate entry
-	if f, _ := k.GetAllowance(ctx, granter, grantee); f != nil {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "fee allowance already exists")
-	}
-
 	// create the account if it is not in account state
 	granteeAcc := k.authKeeper.GetAccount(ctx, grantee)
 	if granteeAcc == nil {
@@ -56,21 +50,49 @@ func (k Keeper) GrantAllowance(ctx sdk.Context, granter, grantee sdk.AccAddress,
 	store := ctx.KVStore(k.storeKey)
 	key := feegrant.FeeAllowanceKey(granter, grantee)
 
-	exp, err := feeAllowance.ExpiresAt()
-	if err != nil {
+	var oldExp *time.Time
+	existingGrant, err := k.getGrant(ctx, granter, grantee)
+
+	// If we didn't find any grant, we don't return any error.
+	// All other kinds of errors are returned.
+	if err != nil && !sdkerrors.IsOf(err, sdkerrors.ErrNotFound) {
 		return err
 	}
 
-	// expiration shouldn't be in the past.
-	if exp != nil && exp.Before(ctx.BlockTime()) {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "expiration is before current block time")
+	if existingGrant != nil && existingGrant.GetAllowance() != nil {
+		grantInfo, err := existingGrant.GetGrant()
+		if err != nil {
+			return err
+		}
+
+		oldExp, err = grantInfo.ExpiresAt()
+		if err != nil {
+			return err
+		}
 	}
 
-	// if expiry is not nil, add the new key to pruning queue.
-	if exp != nil {
+	newExp, err := feeAllowance.ExpiresAt()
+	if err != nil { //nolint:gocritic // should be rewritten to a switch statement
+		return err
+	} else if newExp != nil && newExp.Before(ctx.BlockTime()) {
+		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "expiration is before current block time")
+	} else if oldExp == nil && newExp != nil {
+		// when old oldExp is nil there won't be any key added before to queue.
+		// add the new key to queue directly.
+		k.addToFeeAllowanceQueue(ctx, key[1:], newExp)
+	} else if oldExp != nil && newExp == nil {
+		// when newExp is nil no need of adding the key to the pruning queue
+		// remove the old key from queue.
+		k.removeFromGrantQueue(ctx, oldExp, key[1:])
+	} else if oldExp != nil && newExp != nil && !oldExp.Equal(*newExp) {
 		// `key` formed here with the prefix of `FeeAllowanceKeyPrefix` (which is `0x00`)
-		// remove the 1st byte and reuse the remaining key as it is
-		k.addToFeeAllowanceQueue(ctx, key[1:], exp)
+		// remove the 1st byte and reuse the remaining key as it is.
+
+		// remove the old key from queue.
+		k.removeFromGrantQueue(ctx, oldExp, key[1:])
+
+		// add the new key to queue.
+		k.addToFeeAllowanceQueue(ctx, key[1:], newExp)
 	}
 
 	grant, err := feegrant.NewGrant(granter, grantee, feeAllowance)
@@ -84,6 +106,7 @@ func (k Keeper) GrantAllowance(ctx sdk.Context, granter, grantee sdk.AccAddress,
 	}
 
 	store.Set(key, bz)
+
 	ctx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			feegrant.EventTypeSetFeeGrant,
@@ -193,6 +216,7 @@ func (k Keeper) IterateAllFeeAllowances(ctx sdk.Context, cb func(grant feegrant.
 		if err := k.cdc.Unmarshal(bz, &feeGrant); err != nil {
 			return err
 		}
+
 		stop = cb(feeGrant)
 	}
 
@@ -282,6 +306,12 @@ func (k Keeper) ExportGenesis(ctx sdk.Context) (*feegrant.GenesisState, error) {
 	return &feegrant.GenesisState{
 		Allowances: grants,
 	}, err
+}
+
+func (k Keeper) removeFromGrantQueue(ctx sdk.Context, exp *time.Time, allowanceKey []byte) {
+	key := feegrant.FeeAllowancePrefixQueue(exp, allowanceKey)
+	store := ctx.KVStore(k.storeKey)
+	store.Delete(key)
 }
 
 func (k Keeper) addToFeeAllowanceQueue(ctx sdk.Context, grantKey []byte, exp *time.Time) {

@@ -4,12 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
-	"cosmossdk.io/math"
 	"github.com/spf13/pflag"
-
-	"github.com/cosmos/go-bip39"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
@@ -289,7 +285,7 @@ func (f Factory) BuildUnsignedTx(msgs ...sdk.Msg) (client.TxBuilder, error) {
 			return nil, errors.New("cannot provide both fees and gas prices")
 		}
 
-		glDec := math.LegacyNewDec(int64(f.gas))
+		glDec := sdk.NewDec(int64(f.gas))
 
 		// Derive the fees based on the provided gas prices, where
 		// fee = ceil(gasPrice * gasLimit).
@@ -299,11 +295,6 @@ func (f Factory) BuildUnsignedTx(msgs ...sdk.Msg) (client.TxBuilder, error) {
 			fee := gp.Amount.Mul(glDec)
 			fees[i] = sdk.NewCoin(gp.Denom, fee.Ceil().RoundInt())
 		}
-	}
-
-	// Prevent simple inclusion of a valid mnemonic in the memo field
-	if f.memo != "" && bip39.IsMnemonicValid(strings.ToLower(f.memo)) {
-		return nil, errors.New("cannot provide a valid mnemonic seed in the memo field")
 	}
 
 	tx := f.txConfig.NewTxBuilder()
@@ -426,6 +417,7 @@ func (f Factory) getSimPK() (cryptotypes.PubKey, error) {
 // the updated fields will be returned.
 func (f Factory) Prepare(clientCtx client.Context) (Factory, error) {
 	fc := f
+
 	from := clientCtx.GetFromAddress()
 
 	if err := fc.accountRetriever.EnsureExists(clientCtx, from); err != nil {

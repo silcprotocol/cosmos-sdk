@@ -7,7 +7,6 @@ import (
 	"time"
 
 	sdkmath "cosmossdk.io/math"
-
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/simulation"
@@ -21,6 +20,9 @@ type AppModuleSimulation interface {
 
 	// content functions used to simulate governance proposals
 	ProposalContents(simState SimulationState) []simulation.WeightedProposalContent
+
+	// randomized module parameters for param change proposals
+	RandomizedParams(r *rand.Rand) []simulation.ParamChange
 
 	// register a func to decode the each module's defined types from their corresponding store key
 	RegisterStoreDecoder(sdk.StoreDecoderRegistry)
@@ -52,7 +54,7 @@ func NewSimulationManager(modules ...AppModuleSimulation) *SimulationManager {
 // with the same moduleName.
 // Then it attempts to cast every provided AppModule into an AppModuleSimulation.
 // If the cast succeeds, its included, otherwise it is excluded.
-func NewSimulationManagerFromAppModules(modules map[string]interface{}, overrideModules map[string]AppModuleSimulation) *SimulationManager {
+func NewSimulationManagerFromAppModules(modules map[string]AppModule, overrideModules map[string]AppModuleSimulation) *SimulationManager {
 	simModules := []AppModuleSimulation{}
 	appModuleNamesSorted := make([]string, 0, len(modules))
 	for moduleName := range modules {
@@ -104,6 +106,18 @@ func (sm *SimulationManager) GenerateGenesisStates(simState *SimulationState) {
 	}
 }
 
+// GenerateParamChanges generates randomized contents for creating params change
+// proposal transactions
+func (sm *SimulationManager) GenerateParamChanges(seed int64) (paramChanges []simulation.ParamChange) {
+	r := rand.New(rand.NewSource(seed))
+
+	for _, module := range sm.Modules {
+		paramChanges = append(paramChanges, module.RandomizedParams(r)...)
+	}
+
+	return
+}
+
 // WeightedOperations returns all the modules' weighted operations of an application
 func (sm *SimulationManager) WeightedOperations(simState SimulationState) []simulation.WeightedOperation {
 	wOps := make([]simulation.WeightedOperation, 0, len(sm.Modules))
@@ -124,7 +138,6 @@ type SimulationState struct {
 	Accounts     []simulation.Account                 // simulation accounts
 	InitialStake sdkmath.Int                          // initial coins per account
 	NumBonded    int64                                // number of initially bonded accounts
-	BondDenom    string                               // denom to be used as default
 	GenTimestamp time.Time                            // genesis timestamp
 	UnbondTime   time.Duration                        // staking unbond time stored to use it as the slashing maximum evidence duration
 	ParamChanges []simulation.ParamChange             // simulated parameter changes from modules

@@ -11,6 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	tmos "github.com/tendermint/tendermint/libs/os"
 	tmtypes "github.com/tendermint/tendermint/types"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -208,6 +209,7 @@ $ %s gentx my-key-name 1000000stake --home=/path/to/home/dir --keyring-backend=o
 
 	cmd.Flags().String(flags.FlagHome, defaultNodeHome, "The application home directory")
 	cmd.Flags().String(flags.FlagOutputDocument, "", "Write the genesis transaction JSON document to the given file instead of the default location")
+	cmd.Flags().String(flags.FlagChainID, "", "The network chain ID")
 	cmd.Flags().AddFlagSet(fsCreateValidator)
 	flags.AddTxFlagsToCmd(cmd)
 
@@ -216,8 +218,8 @@ $ %s gentx my-key-name 1000000stake --home=/path/to/home/dir --keyring-backend=o
 
 func makeOutputFilepath(rootDir, nodeID string) (string, error) {
 	writePath := filepath.Join(rootDir, "config", "gentx")
-	if err := os.MkdirAll(writePath, 0o700); err != nil {
-		return "", fmt.Errorf("could not create directory %q: %w", writePath, err)
+	if err := tmos.EnsureDir(writePath, 0o700); err != nil {
+		return "", err
 	}
 
 	return filepath.Join(writePath, fmt.Sprintf("gentx-%v.json", nodeID)), nil

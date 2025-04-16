@@ -3,10 +3,6 @@ package orm
 import (
 	"testing"
 
-	"github.com/cosmos/gogoproto/proto"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
@@ -14,13 +10,15 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/query"
 	"github.com/cosmos/cosmos-sdk/x/group/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadAll(t *testing.T) {
 	specs := map[string]struct {
 		srcIT     Iterator
 		destSlice func() ModelSlicePtr
-		expErr    *sdkerrors.Error //nolint:staticcheck // SA1019: sdkerrors.Error is deprecated: the type has been moved to cosmossdk.io/errors module. Please use the above module instead of this package.
+		expErr    *sdkerrors.Error
 		expIDs    []RowID
 		expResult ModelSlicePtr
 	}{
@@ -152,11 +150,11 @@ func TestFirst(t *testing.T) {
 	testCases := []struct {
 		name          string
 		iterator      Iterator
-		dest          proto.Message
+		dest          codec.ProtoMarshaler
 		expectErr     bool
 		expectedErr   string
 		expectedRowID RowID
-		expectedDest  proto.Message
+		expectedDest  codec.ProtoMarshaler
 	}{
 		{
 			name:        "nil iterator",
@@ -203,7 +201,7 @@ func TestPaginate(t *testing.T) {
 	tb, err := NewAutoUInt64Table(AutoUInt64TablePrefix, AutoUInt64TableSeqPrefix, &testdata.TableModel{}, cdc)
 	require.NoError(t, err)
 	idx, err := NewIndex(tb, AutoUInt64TableModelByMetadataPrefix, func(val interface{}) ([]interface{}, error) {
-		return []interface{}{val.(*testdata.TableModel).Metadata}, nil
+		return []interface{}{[]byte(val.(*testdata.TableModel).Metadata)}, nil
 	}, testdata.TableModel{}.Metadata)
 	require.NoError(t, err)
 
@@ -238,7 +236,6 @@ func TestPaginate(t *testing.T) {
 	}
 
 	for _, g := range []testdata.TableModel{t1, t2, t3, t4, t5} {
-		g := g
 		_, err := tb.Create(store, &g)
 		require.NoError(t, err)
 	}
@@ -345,8 +342,8 @@ func TestPaginate(t *testing.T) {
 }
 
 // mockIter encodes + decodes value object.
-func mockIter(rowID RowID, val proto.Message) Iterator {
-	b, err := proto.Marshal(val)
+func mockIter(rowID RowID, val codec.ProtoMarshaler) Iterator {
+	b, err := val.Marshal()
 	if err != nil {
 		panic(err)
 	}
@@ -354,7 +351,7 @@ func mockIter(rowID RowID, val proto.Message) Iterator {
 }
 
 func noopIter() Iterator {
-	return IteratorFunc(func(dest proto.Message) (RowID, error) {
+	return IteratorFunc(func(dest codec.ProtoMarshaler) (RowID, error) {
 		return nil, nil
 	})
 }

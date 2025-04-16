@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -29,7 +28,7 @@ func TestCoinTestSuite(t *testing.T) {
 
 func (s *coinTestSuite) SetupSuite() {
 	zero := sdk.NewInt(0)
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 	four := sdk.NewInt(4)
 
@@ -92,15 +91,15 @@ func (s *coinTestSuite) TestCoinIsValid() {
 	}{
 		{sdk.Coin{testDenom1, sdk.NewInt(-1)}, false},
 		{sdk.Coin{testDenom1, sdk.NewInt(0)}, true},
-		{sdk.Coin{testDenom1, math.OneInt()}, true},
-		{sdk.Coin{"Atom", math.OneInt()}, true},
-		{sdk.Coin{"ATOM", math.OneInt()}, true},
-		{sdk.Coin{"a", math.OneInt()}, false},
-		{sdk.Coin{loremIpsum, math.OneInt()}, false},
-		{sdk.Coin{"ibc/7F1D3FCF4AE79E1554D670D1AD949A9BA4E4A3C76C63093E17E446A46061A7A2", math.OneInt()}, true},
-		{sdk.Coin{"atOm", math.OneInt()}, true},
-		{sdk.Coin{"x:y-z.1_2", math.OneInt()}, true},
-		{sdk.Coin{"     ", math.OneInt()}, false},
+		{sdk.Coin{testDenom1, sdk.OneInt()}, true},
+		{sdk.Coin{"Atom", sdk.OneInt()}, true},
+		{sdk.Coin{"ATOM", sdk.OneInt()}, true},
+		{sdk.Coin{"a", sdk.OneInt()}, false},
+		{sdk.Coin{loremIpsum, sdk.OneInt()}, false},
+		{sdk.Coin{"ibc/7F1D3FCF4AE79E1554D670D1AD949A9BA4E4A3C76C63093E17E446A46061A7A2", sdk.OneInt()}, true},
+		{sdk.Coin{"atOm", sdk.OneInt()}, true},
+		{sdk.Coin{"x:y-z.1_2", sdk.OneInt()}, true},
+		{sdk.Coin{"     ", sdk.OneInt()}, false},
 	}
 
 	for i, tc := range cases {
@@ -131,33 +130,6 @@ func (s *coinTestSuite) TestCustomValidation() {
 	sdk.SetCoinDenomRegex(sdk.DefaultCoinDenomRegex)
 }
 
-func (s *coinTestSuite) TestCoinsDenoms() {
-	cases := []struct {
-		coins      sdk.Coins
-		testOutput []string
-		expectPass bool
-	}{
-		{sdk.NewCoins(sdk.Coin{"ATOM", sdk.NewInt(1)}, sdk.Coin{"JUNO", sdk.NewInt(1)}, sdk.Coin{"OSMO", sdk.NewInt(1)}, sdk.Coin{"RAT", sdk.NewInt(1)}), []string{"ATOM", "JUNO", "OSMO", "RAT"}, true},
-		{sdk.NewCoins(sdk.Coin{"ATOM", sdk.NewInt(1)}, sdk.Coin{"JUNO", sdk.NewInt(1)}), []string{"ATOM"}, false},
-	}
-
-	for i, tc := range cases {
-		expectedOutput := tc.coins.Denoms()
-		count := 0
-		if len(expectedOutput) == len(tc.testOutput) {
-			for k := range tc.testOutput {
-				if tc.testOutput[k] != expectedOutput[k] {
-					count++
-					break
-				}
-			}
-		} else {
-			count++
-		}
-		s.Require().Equal(count == 0, tc.expectPass, "unexpected result for coins.Denoms, tc #%d", i)
-	}
-}
-
 func (s *coinTestSuite) TestAddCoin() {
 	cases := []struct {
 		inputOne    sdk.Coin
@@ -184,7 +156,7 @@ func (s *coinTestSuite) TestAddCoin() {
 func (s *coinTestSuite) TestAddCoinAmount() {
 	cases := []struct {
 		coin     sdk.Coin
-		amount   math.Int
+		amount   sdk.Int
 		expected sdk.Coin
 	}{
 		{sdk.NewInt64Coin(testDenom1, 1), sdk.NewInt(1), sdk.NewInt64Coin(testDenom1, 2)},
@@ -232,7 +204,7 @@ func (s *coinTestSuite) TestSubCoin() {
 func (s *coinTestSuite) TestSubCoinAmount() {
 	cases := []struct {
 		coin        sdk.Coin
-		amount      math.Int
+		amount      sdk.Int
 		expected    sdk.Coin
 		shouldPanic bool
 	}{
@@ -256,7 +228,7 @@ func (s *coinTestSuite) TestSubCoinAmount() {
 func (s *coinTestSuite) TestMulIntCoins() {
 	testCases := []struct {
 		input       sdk.Coins
-		multiplier  math.Int
+		multiplier  sdk.Int
 		expected    sdk.Coins
 		shouldPanic bool
 	}{
@@ -281,7 +253,7 @@ func (s *coinTestSuite) TestMulIntCoins() {
 func (s *coinTestSuite) TestQuoIntCoins() {
 	testCases := []struct {
 		input       sdk.Coins
-		divisor     math.Int
+		divisor     sdk.Int
 		expected    sdk.Coins
 		isValid     bool
 		shouldPanic bool
@@ -413,7 +385,7 @@ func (s *coinTestSuite) TestFilteredZeroCoins() {
 		{
 			name: "all greater than zero",
 			input: sdk.Coins{
-				{"testa", math.OneInt()},
+				{"testa", sdk.OneInt()},
 				{"testb", sdk.NewInt(2)},
 				{"testc", sdk.NewInt(3)},
 				{"testd", sdk.NewInt(4)},
@@ -425,7 +397,7 @@ func (s *coinTestSuite) TestFilteredZeroCoins() {
 		{
 			name: "zero coin in middle",
 			input: sdk.Coins{
-				{"testa", math.OneInt()},
+				{"testa", sdk.OneInt()},
 				{"testb", sdk.NewInt(2)},
 				{"testc", sdk.NewInt(0)},
 				{"testd", sdk.NewInt(4)},
@@ -439,7 +411,7 @@ func (s *coinTestSuite) TestFilteredZeroCoins() {
 			input: sdk.Coins{
 				{"teste", sdk.NewInt(5)},
 				{"testc", sdk.NewInt(3)},
-				{"testa", math.OneInt()},
+				{"testa", sdk.OneInt()},
 				{"testd", sdk.NewInt(4)},
 				{"testb", sdk.NewInt(0)},
 			},
@@ -471,15 +443,15 @@ func (s *coinTestSuite) TestCoins_String() {
 		},
 		{
 			"single coin",
-			sdk.Coins{{"tree", math.OneInt()}},
+			sdk.Coins{{"tree", sdk.OneInt()}},
 			"1tree",
 		},
 		{
 			"multiple coins",
 			sdk.Coins{
-				{"tree", math.OneInt()},
-				{"gas", math.OneInt()},
-				{"mineral", math.OneInt()},
+				{"tree", sdk.OneInt()},
+				{"gas", sdk.OneInt()},
+				{"mineral", sdk.OneInt()},
 			},
 			"1tree,1gas,1mineral",
 		},
@@ -648,87 +620,87 @@ func (s *coinTestSuite) TestCoins_Validate() {
 		{
 			"valid lowercase coins",
 			sdk.Coins{
-				{"gas", math.OneInt()},
-				{"mineral", math.OneInt()},
-				{"tree", math.OneInt()},
+				{"gas", sdk.OneInt()},
+				{"mineral", sdk.OneInt()},
+				{"tree", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"valid uppercase coins",
 			sdk.Coins{
-				{"GAS", math.OneInt()},
-				{"MINERAL", math.OneInt()},
-				{"TREE", math.OneInt()},
+				{"GAS", sdk.OneInt()},
+				{"MINERAL", sdk.OneInt()},
+				{"TREE", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"valid uppercase coin",
 			sdk.Coins{
-				{"ATOM", math.OneInt()},
+				{"ATOM", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"valid lower and uppercase coins (1)",
 			sdk.Coins{
-				{"GAS", math.OneInt()},
-				{"gAs", math.OneInt()},
+				{"GAS", sdk.OneInt()},
+				{"gAs", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"valid lower and uppercase coins (2)",
 			sdk.Coins{
-				{"ATOM", math.OneInt()},
-				{"Atom", math.OneInt()},
-				{"atom", math.OneInt()},
+				{"ATOM", sdk.OneInt()},
+				{"Atom", sdk.OneInt()},
+				{"atom", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"mixed case (1)",
 			sdk.Coins{
-				{"MineraL", math.OneInt()},
-				{"TREE", math.OneInt()},
-				{"gAs", math.OneInt()},
+				{"MineraL", sdk.OneInt()},
+				{"TREE", sdk.OneInt()},
+				{"gAs", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"mixed case (2)",
 			sdk.Coins{
-				{"gAs", math.OneInt()},
-				{"mineral", math.OneInt()},
+				{"gAs", sdk.OneInt()},
+				{"mineral", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"mixed case (3)",
 			sdk.Coins{
-				{"gAs", math.OneInt()},
+				{"gAs", sdk.OneInt()},
 			},
 			true,
 		},
 		{
 			"unicode letters and numbers",
 			sdk.Coins{
-				{"𐀀𐀆𐀉Ⅲ", math.OneInt()},
+				{"𐀀𐀆𐀉Ⅲ", sdk.OneInt()},
 			},
 			false,
 		},
 		{
 			"emojis",
 			sdk.Coins{
-				{"🤑😋🤔", math.OneInt()},
+				{"🤑😋🤔", sdk.OneInt()},
 			},
 			false,
 		},
 		{
 			"IBC denominations (ADR 001)",
 			sdk.Coins{
-				{"ibc/7F1D3FCF4AE79E1554D670D1AD949A9BA4E4A3C76C63093E17E446A46061A7A2", math.OneInt()},
+				{"ibc/7F1D3FCF4AE79E1554D670D1AD949A9BA4E4A3C76C63093E17E446A46061A7A2", sdk.OneInt()},
 				{"ibc/876563AAAACF739EB061C67CDB5EDF2B7C9FD4AA9D876450CC21210807C2820A", sdk.NewInt(2)},
 			},
 			true,
@@ -746,53 +718,44 @@ func (s *coinTestSuite) TestCoins_Validate() {
 		{
 			"invalid denomination (1)",
 			sdk.Coins{
-				{"MineraL", math.OneInt()},
-				{"0TREE", math.OneInt()},
-				{"gAs", math.OneInt()},
+				{"MineraL", sdk.OneInt()},
+				{"0TREE", sdk.OneInt()},
+				{"gAs", sdk.OneInt()},
 			},
 			false,
 		},
 		{
 			"invalid denomination (2)",
 			sdk.Coins{
-				{"-GAS", math.OneInt()},
-				{"gAs", math.OneInt()},
+				{"-GAS", sdk.OneInt()},
+				{"gAs", sdk.OneInt()},
 			},
 			false,
 		},
 		{
 			"bad sort (1)",
 			sdk.Coins{
-				{"tree", math.OneInt()},
-				{"gas", math.OneInt()},
-				{"mineral", math.OneInt()},
+				{"tree", sdk.OneInt()},
+				{"gas", sdk.OneInt()},
+				{"mineral", sdk.OneInt()},
 			},
 			false,
 		},
 		{
 			"bad sort (2)",
 			sdk.Coins{
-				{"gas", math.OneInt()},
-				{"tree", math.OneInt()},
-				{"mineral", math.OneInt()},
-			},
-			false,
-		},
-		{
-			"bad sort (3)",
-			sdk.Coins{
-				{"gas", math.OneInt()},
-				{"tree", math.OneInt()},
-				{"gas", math.OneInt()},
+				{"gas", sdk.OneInt()},
+				{"tree", sdk.OneInt()},
+				{"mineral", sdk.OneInt()},
 			},
 			false,
 		},
 		{
 			"non-positive amount (1)",
 			sdk.Coins{
-				{"gas", math.OneInt()},
+				{"gas", sdk.OneInt()},
 				{"tree", sdk.NewInt(0)},
-				{"mineral", math.OneInt()},
+				{"mineral", sdk.OneInt()},
 			},
 			false,
 		},
@@ -800,35 +763,17 @@ func (s *coinTestSuite) TestCoins_Validate() {
 			"non-positive amount (2)",
 			sdk.Coins{
 				{"gas", sdk.NewInt(-1)},
-				{"tree", math.OneInt()},
-				{"mineral", math.OneInt()},
+				{"tree", sdk.OneInt()},
+				{"mineral", sdk.OneInt()},
 			},
 			false,
 		},
 		{
-			"duplicate denomination (1)",
+			"duplicate denomination",
 			sdk.Coins{
-				{"gas", math.OneInt()},
-				{"gas", math.OneInt()},
-				{"mineral", math.OneInt()},
-			},
-			false,
-		},
-		{
-			"duplicate denomination (2)",
-			sdk.Coins{
-				{"gold", math.OneInt()},
-				{"gold", math.OneInt()},
-			},
-			false,
-		},
-		{
-			"duplicate denomination (3)",
-			sdk.Coins{
-				{"gas", math.OneInt()},
-				{"mineral", math.OneInt()},
-				{"silver", math.OneInt()},
-				{"silver", math.OneInt()},
+				{"gas", sdk.OneInt()},
+				{"gas", sdk.OneInt()},
+				{"mineral", sdk.OneInt()},
 			},
 			false,
 		},
@@ -845,7 +790,7 @@ func (s *coinTestSuite) TestCoins_Validate() {
 }
 
 func (s *coinTestSuite) TestMinMax() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 
 	cases := []struct {
@@ -877,7 +822,7 @@ func (s *coinTestSuite) TestMinMax() {
 }
 
 func (s *coinTestSuite) TestCoinsGT() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 
 	s.Require().False(sdk.Coins{}.IsAllGT(sdk.Coins{}))
@@ -889,7 +834,7 @@ func (s *coinTestSuite) TestCoinsGT() {
 }
 
 func (s *coinTestSuite) TestCoinsLT() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 
 	s.Require().False(sdk.Coins{}.IsAllLT(sdk.Coins{}))
@@ -904,7 +849,7 @@ func (s *coinTestSuite) TestCoinsLT() {
 }
 
 func (s *coinTestSuite) TestCoinsLTE() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 
 	s.Require().True(sdk.Coins{}.IsAllLTE(sdk.Coins{}))
@@ -919,7 +864,7 @@ func (s *coinTestSuite) TestCoinsLTE() {
 }
 
 func (s *coinTestSuite) TestParseCoins() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 
 	cases := []struct {
 		input    string
@@ -1089,7 +1034,7 @@ func (s *coinTestSuite) TestSearch() {
 }
 
 func (s *coinTestSuite) TestCoinsIsAnyGTE() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 
 	s.Require().False(sdk.Coins{}.IsAnyGTE(sdk.Coins{}))
@@ -1109,7 +1054,7 @@ func (s *coinTestSuite) TestCoinsIsAnyGTE() {
 }
 
 func (s *coinTestSuite) TestCoinsIsAllGT() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 
 	s.Require().False(sdk.Coins{}.IsAllGT(sdk.Coins{}))
@@ -1129,7 +1074,7 @@ func (s *coinTestSuite) TestCoinsIsAllGT() {
 }
 
 func (s *coinTestSuite) TestCoinsIsAllGTE() {
-	one := math.OneInt()
+	one := sdk.OneInt()
 	two := sdk.NewInt(2)
 
 	s.Require().True(sdk.Coins{}.IsAllGTE(sdk.Coins{}))
@@ -1154,7 +1099,7 @@ func (s *coinTestSuite) TestNewCoins() {
 	tenatom := sdk.NewInt64Coin("atom", 10)
 	tenbtc := sdk.NewInt64Coin("btc", 10)
 	zeroeth := sdk.NewInt64Coin("eth", 0)
-	invalidCoin := sdk.Coin{"0ETH", math.OneInt()}
+	invalidCoin := sdk.Coin{"0ETH", sdk.OneInt()}
 	tests := []struct {
 		name      string
 		coins     sdk.Coins

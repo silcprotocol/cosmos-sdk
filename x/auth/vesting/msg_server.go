@@ -56,7 +56,7 @@ func (s msgServer) CreateVestingAccount(goCtx context.Context, msg *types.MsgCre
 	baseAccount = ak.NewAccount(ctx, baseAccount).(*authtypes.BaseAccount)
 	baseVestingAccount := types.NewBaseVestingAccount(baseAccount, msg.Amount.Sort(), msg.EndTime)
 
-	var vestingAccount sdk.AccountI
+	var vestingAccount authtypes.AccountI
 	if msg.Delayed {
 		vestingAccount = types.NewDelayedVestingAccountRaw(baseVestingAccount)
 	} else {
@@ -79,10 +79,16 @@ func (s msgServer) CreateVestingAccount(goCtx context.Context, msg *types.MsgCre
 		}
 	}()
 
-	err = bk.SendCoins(ctx, from, to, msg.Amount)
-	if err != nil {
+	if err = bk.SendCoins(ctx, from, to, msg.Amount); err != nil {
 		return nil, err
 	}
+
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			sdk.EventTypeMessage,
+			sdk.NewAttribute(sdk.AttributeKeyModule, types.AttributeValueCategory),
+		),
+	)
 
 	return &types.MsgCreateVestingAccountResponse{}, nil
 }
@@ -133,10 +139,16 @@ func (s msgServer) CreatePermanentLockedAccount(goCtx context.Context, msg *type
 		}
 	}()
 
-	err = bk.SendCoins(ctx, from, to, msg.Amount)
-	if err != nil {
+	if err = bk.SendCoins(ctx, from, to, msg.Amount); err != nil {
 		return nil, err
 	}
+
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			sdk.EventTypeMessage,
+			sdk.NewAttribute(sdk.AttributeKeyModule, types.AttributeValueCategory),
+		),
+	)
 
 	return &types.MsgCreatePermanentLockedAccountResponse{}, nil
 }
@@ -161,9 +173,12 @@ func (s msgServer) CreatePeriodicVestingAccount(goCtx context.Context, msg *type
 	}
 
 	var totalCoins sdk.Coins
-
 	for _, period := range msg.VestingPeriods {
 		totalCoins = totalCoins.Add(period.Amount...)
+	}
+
+	if err := bk.IsSendEnabledCoins(ctx, totalCoins...); err != nil {
+		return nil, err
 	}
 
 	baseAccount := authtypes.NewBaseAccountWithAddress(to)
@@ -186,10 +201,15 @@ func (s msgServer) CreatePeriodicVestingAccount(goCtx context.Context, msg *type
 		}
 	}()
 
-	err = bk.SendCoins(ctx, from, to, totalCoins)
-	if err != nil {
+	if err = bk.SendCoins(ctx, from, to, totalCoins); err != nil {
 		return nil, err
 	}
 
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			sdk.EventTypeMessage,
+			sdk.NewAttribute(sdk.AttributeKeyModule, types.AttributeValueCategory),
+		),
+	)
 	return &types.MsgCreatePeriodicVestingAccountResponse{}, nil
 }

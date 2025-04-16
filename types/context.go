@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cosmos/gogoproto/proto"
+	"github.com/gogo/protobuf/proto"
 	abci "github.com/tendermint/tendermint/abci/types"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 	"github.com/tendermint/tendermint/libs/log"
@@ -36,8 +36,8 @@ type Context struct {
 	checkTx              bool
 	recheckTx            bool // if recheckTx == true, then checkTx must also be true
 	minGasPrice          DecCoins
-	consParams           *tmproto.ConsensusParams
-	eventManager         EventManagerI
+	consParams           *abci.ConsensusParams
+	eventManager         *EventManager
 	priority             int64 // The tx priority, only relevant in CheckTx
 	kvGasConfig          storetypes.GasConfig
 	transientKVGasConfig storetypes.GasConfig
@@ -60,7 +60,7 @@ func (c Context) BlockGasMeter() GasMeter                    { return c.blockGas
 func (c Context) IsCheckTx() bool                            { return c.checkTx }
 func (c Context) IsReCheckTx() bool                          { return c.recheckTx }
 func (c Context) MinGasPrices() DecCoins                     { return c.minGasPrice }
-func (c Context) EventManager() EventManagerI                { return c.eventManager }
+func (c Context) EventManager() *EventManager                { return c.eventManager }
 func (c Context) Priority() int64                            { return c.priority }
 func (c Context) KVGasConfig() storetypes.GasConfig          { return c.kvGasConfig }
 func (c Context) TransientKVGasConfig() storetypes.GasConfig { return c.transientKVGasConfig }
@@ -78,8 +78,8 @@ func (c Context) HeaderHash() tmbytes.HexBytes {
 	return hash
 }
 
-func (c Context) ConsensusParams() *tmproto.ConsensusParams {
-	return proto.Clone(c.consParams).(*tmproto.ConsensusParams)
+func (c Context) ConsensusParams() *abci.ConsensusParams {
+	return proto.Clone(c.consParams).(*abci.ConsensusParams)
 }
 
 func (c Context) Deadline() (deadline time.Time, ok bool) {
@@ -237,18 +237,18 @@ func (c Context) WithMinGasPrices(gasPrices DecCoins) Context {
 }
 
 // WithConsensusParams returns a Context with an updated consensus params
-func (c Context) WithConsensusParams(params *tmproto.ConsensusParams) Context {
+func (c Context) WithConsensusParams(params *abci.ConsensusParams) Context {
 	c.consParams = params
 	return c
 }
 
 // WithEventManager returns a Context with an updated event manager
-func (c Context) WithEventManager(em EventManagerI) Context {
+func (c Context) WithEventManager(em *EventManager) Context {
 	c.eventManager = em
 	return c
 }
 
-// WithPriority returns a Context with an updated tx priority
+// WithEventManager returns a Context with an updated tx priority
 func (c Context) WithPriority(p int64) Context {
 	c.priority = p
 	return c
@@ -278,12 +278,12 @@ func (c Context) Value(key interface{}) interface{} {
 
 // KVStore fetches a KVStore from the MultiStore.
 func (c Context) KVStore(key storetypes.StoreKey) KVStore {
-	return gaskv.NewStore(c.ms.GetKVStore(key), c.gasMeter, c.kvGasConfig)
+	return gaskv.NewStore(c.MultiStore().GetKVStore(key), c.GasMeter(), c.kvGasConfig)
 }
 
 // TransientStore fetches a TransientStore from the MultiStore.
 func (c Context) TransientStore(key storetypes.StoreKey) KVStore {
-	return gaskv.NewStore(c.ms.GetKVStore(key), c.gasMeter, c.transientKVGasConfig)
+	return gaskv.NewStore(c.MultiStore().GetKVStore(key), c.GasMeter(), c.transientKVGasConfig)
 }
 
 // CacheContext returns a new Context with the multi-store cached and a new
@@ -291,7 +291,7 @@ func (c Context) TransientStore(key storetypes.StoreKey) KVStore {
 // is called. Note, events are automatically emitted on the parent context's
 // EventManager when the caller executes the write.
 func (c Context) CacheContext() (cc Context, writeCache func()) {
-	cms := c.ms.CacheMultiStore()
+	cms := c.MultiStore().CacheMultiStore()
 	cc = c.WithMultiStore(cms).WithEventManager(NewEventManager())
 
 	writeCache = func() {
@@ -314,8 +314,6 @@ const SdkContextKey ContextKey = "sdk-context"
 // context as a value. It is useful for passing an sdk.Context  through methods that take a
 // stdlib context.Context parameter such as generated gRPC methods. To get the original
 // sdk.Context back, call UnwrapSDKContext.
-//
-// Deprecated: there is no need to wrap anymore as the Cosmos SDK context implements context.Context.
 func WrapSDKContext(ctx Context) context.Context {
 	return ctx
 }

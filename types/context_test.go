@@ -12,8 +12,8 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/tests/mocks"
 	"github.com/cosmos/cosmos-sdk/testutil"
-	"github.com/cosmos/cosmos-sdk/testutil/mock"
 	"github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -63,7 +63,7 @@ func (s *contextTestSuite) TestLogContext() {
 	ctrl := gomock.NewController(s.T())
 	s.T().Cleanup(ctrl.Finish)
 
-	logger := mock.NewMockLogger(ctrl)
+	logger := mocks.NewMockLogger(ctrl)
 	logger.EXPECT().Debug("debug")
 	logger.EXPECT().Info("info")
 	logger.EXPECT().Error("error")
@@ -72,6 +72,12 @@ func (s *contextTestSuite) TestLogContext() {
 	ctx.Logger().Debug("debug")
 	ctx.Logger().Info("info")
 	ctx.Logger().Error("error")
+}
+
+type dummy int64 //nolint:unused
+
+func (d dummy) Clone() interface{} {
+	return d
 }
 
 // Testing saving/loading sdk type values to/from the context
@@ -87,7 +93,7 @@ func (s *contextTestSuite) TestContextWithCustom() {
 	chainid := "chainid"
 	ischeck := true
 	txbytes := []byte("txbytes")
-	logger := mock.NewMockLogger(ctrl)
+	logger := mocks.NewMockLogger(ctrl)
 	voteinfos := []abci.VoteInfo{{}}
 	meter := types.NewGasMeter(10000)
 	blockGasMeter := types.NewGasMeter(20000)
@@ -133,11 +139,11 @@ func (s *contextTestSuite) TestContextWithCustom() {
 
 	// test consensus param
 	s.Require().Nil(ctx.ConsensusParams())
-	cp := &tmproto.ConsensusParams{}
+	cp := &abci.ConsensusParams{}
 	s.Require().Equal(cp, ctx.WithConsensusParams(cp).ConsensusParams())
 
 	// test inner context
-	newContext := context.WithValue(ctx.Context(), "key", "value") //nolint:golint,staticcheck,revive
+	newContext := context.WithValue(ctx.Context(), "key", "value") //nolint:golint,staticcheck
 	s.Require().NotEqual(ctx.Context(), ctx.WithContext(newContext).Context())
 }
 
@@ -228,7 +234,7 @@ func (s *contextTestSuite) TestUnwrapSDKContext() {
 	s.Require().Panics(func() { types.UnwrapSDKContext(ctx) })
 
 	// test unwrapping when we've used context.WithValue
-	ctx = context.WithValue(sdkCtx, "foo", "bar") //nolint:golint,staticcheck,revive
+	ctx = context.WithValue(sdkCtx, "foo", "bar")
 	sdkCtx2 = types.UnwrapSDKContext(ctx)
 	s.Require().Equal(sdkCtx, sdkCtx2)
 }

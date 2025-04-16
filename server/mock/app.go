@@ -1,59 +1,46 @@
 package mock
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 
-	db "github.com/cosmos/cosmos-db"
+	"github.com/tendermint/tendermint/types"
+
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/types"
-	"google.golang.org/grpc"
 
 	bam "github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 // NewApp creates a simple mock kvstore app for testing. It should work
 // similar to a real app. Make sure rootDir is empty before running the test,
-// in order to guarantee consistent results.
+// in order to guarantee consistent results
 func NewApp(rootDir string, logger log.Logger) (abci.Application, error) {
-	db, err := db.NewGoLevelDB("mock", filepath.Join(rootDir, "data"), nil)
+	db, err := sdk.NewLevelDB("mock", filepath.Join(rootDir, "data")) //nolint: staticcheck
 	if err != nil {
 		return nil, err
 	}
 
+	// Capabilities key to access the main KVStore.
 	capKeyMainStore := sdk.NewKVStoreKey("main")
 
+	// Create BaseApp.
 	baseApp := bam.NewBaseApp("kvstore", logger, db, decodeTx)
+
+	// Set mounts for BaseApp's MultiStore.
 	baseApp.MountStores(capKeyMainStore)
+
 	baseApp.SetInitChainer(InitChainer(capKeyMainStore))
 
-	interfaceRegistry := codectypes.NewInterfaceRegistry()
-	interfaceRegistry.RegisterImplementations((*sdk.Msg)(nil), &KVStoreTx{})
+	// Set a Route.
+	baseApp.Router().AddRoute(sdk.NewRoute("kvstore", KVStoreHandler(capKeyMainStore)))
 
-	router := bam.NewMsgServiceRouter()
-	router.SetInterfaceRegistry(interfaceRegistry)
-
-	newDesc := &grpc.ServiceDesc{
-		ServiceName: "test",
-		Methods: []grpc.MethodDesc{
-			{
-				MethodName: "Test",
-				Handler:    _Msg_Test_Handler,
-			},
-		},
-	}
-
-	router.RegisterService(newDesc, &MsgServerImpl{capKeyMainStore})
-	baseApp.SetMsgServiceRouter(router)
-
+	// Load latest version.
 	if err := baseApp.LoadLatestVersion(); err != nil {
 		return nil, err
 	}
@@ -61,15 +48,16 @@ func NewApp(rootDir string, logger log.Logger) (abci.Application, error) {
 	return baseApp, nil
 }
 
-// KVStoreHandler is a simple handler that takes KVStoreTx and writes
-// them to the db.
+// KVStoreHandler is a simple handler that takes kvstoreTx and writes
+// them to the db
 func KVStoreHandler(storeKey storetypes.StoreKey) sdk.Handler {
 	return func(ctx sdk.Context, msg sdk.Msg) (*sdk.Result, error) {
-		dTx, ok := msg.(*KVStoreTx)
+		dTx, ok := msg.(kvstoreTx)
 		if !ok {
-			return nil, errors.New("KVStoreHandler should only receive KVStoreTx")
+			return nil, errors.New("KVStoreHandler should only receive kvstoreTx")
 		}
 
+		// tx is already unmarshalled
 		key := dTx.key
 		value := dTx.value
 
@@ -136,35 +124,4 @@ func AppGenState(_ *codec.LegacyAmino, _ types.GenesisDoc, _ []json.RawMessage) 
 func AppGenStateEmpty(_ *codec.LegacyAmino, _ types.GenesisDoc, _ []json.RawMessage) (appState json.RawMessage, err error) {
 	appState = json.RawMessage(``)
 	return
-}
-
-// Manually write the handlers for this custom message
-type MsgServer interface {
-	Test(ctx context.Context, msg *KVStoreTx) (*sdk.Result, error)
-}
-
-type MsgServerImpl struct {
-	capKeyMainStore *storetypes.KVStoreKey
-}
-
-func _Msg_Test_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) { //nolint:revive
-	in := new(KVStoreTx)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MsgServer).Test(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/KVStoreTx",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).Test(ctx, req.(*KVStoreTx))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func (m MsgServerImpl) Test(ctx context.Context, msg *KVStoreTx) (*sdk.Result, error) {
-	return KVStoreHandler(m.capKeyMainStore)(sdk.UnwrapSDKContext(ctx), msg)
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keys/multisig"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/cosmos/cosmos-sdk/crypto/types"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -159,9 +160,8 @@ func TestKeyManagementKeyRing(t *testing.T) {
 	newPath := filepath.Join(tempDir, "random")
 	require.NoError(t, os.Mkdir(newPath, 0o755))
 	items, err := os.ReadDir(tempDir)
-	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(items), 2)
-	_, err = kb.List()
+	keyS, err = kb.List()
 	require.NoError(t, err)
 
 	// addr cache gets nuked - and test skip flag
@@ -457,15 +457,14 @@ func TestInMemoryLanguage(t *testing.T) {
 }
 
 func TestInMemoryWithKeyring(t *testing.T) {
-	priv := types.PrivKey(secp256k1.GenPrivKey())
+	priv := cryptotypes.PrivKey(secp256k1.GenPrivKey())
 	pub := priv.PubKey()
 
 	cdc := getCodec()
 	_, err := NewLocalRecord("test record", priv, pub)
-	require.NoError(t, err)
 
 	multi := multisig.NewLegacyAminoPubKey(
-		1, []types.PubKey{
+		1, []cryptotypes.PubKey{
 			pub,
 		},
 	)
@@ -1407,7 +1406,7 @@ func TestRenameKey(t *testing.T) {
 				newRecord, err := kr.Key(newKeyUID) // new key should be in keyring
 				require.NoError(t, err)
 				requireEqualRenamedKey(t, newRecord, oldKeyRecord, false) // oldKeyRecord and newRecord should be the same except name
-				_, err = kr.Key(oldKeyUID)                                // old key should be gone from keyring
+				oldKeyRecord, err = kr.Key(oldKeyUID)                     // old key should be gone from keyring
 				require.Error(t, err)
 			},
 		},

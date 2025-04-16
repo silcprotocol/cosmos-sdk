@@ -7,8 +7,8 @@ import (
 	context "context"
 	fmt "fmt"
 	query "github.com/cosmos/cosmos-sdk/types/query"
-	grpc1 "github.com/cosmos/gogoproto/grpc"
-	proto "github.com/cosmos/gogoproto/proto"
+	grpc1 "github.com/gogo/protobuf/grpc"
+	proto "github.com/gogo/protobuf/proto"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -31,10 +31,8 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // QueryBalanceRequest is the request type for the Query/Balance RPC method
 type QueryBalanceRequest struct {
-	// class_id associated with the nft
 	ClassId string `protobuf:"bytes,1,opt,name=class_id,json=classId,proto3" json:"class_id,omitempty"`
-	// owner is the owner address of the nft
-	Owner string `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
+	Owner   string `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
 }
 
 func (m *QueryBalanceRequest) Reset()         { *m = QueryBalanceRequest{} }
@@ -86,7 +84,6 @@ func (m *QueryBalanceRequest) GetOwner() string {
 
 // QueryBalanceResponse is the response type for the Query/Balance RPC method
 type QueryBalanceResponse struct {
-	// amount is the number of all NFTs of a given class owned by the owner
 	Amount uint64 `protobuf:"varint,1,opt,name=amount,proto3" json:"amount,omitempty"`
 }
 
@@ -132,10 +129,8 @@ func (m *QueryBalanceResponse) GetAmount() uint64 {
 
 // QueryOwnerRequest is the request type for the Query/Owner RPC method
 type QueryOwnerRequest struct {
-	// class_id associated with the nft
 	ClassId string `protobuf:"bytes,1,opt,name=class_id,json=classId,proto3" json:"class_id,omitempty"`
-	// id is a unique identifier of the NFT
-	Id string `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Id      string `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 }
 
 func (m *QueryOwnerRequest) Reset()         { *m = QueryOwnerRequest{} }
@@ -187,7 +182,6 @@ func (m *QueryOwnerRequest) GetId() string {
 
 // QueryOwnerResponse is the response type for the Query/Owner RPC method
 type QueryOwnerResponse struct {
-	// owner is the owner address of the nft
 	Owner string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
 }
 
@@ -233,7 +227,6 @@ func (m *QueryOwnerResponse) GetOwner() string {
 
 // QuerySupplyRequest is the request type for the Query/Supply RPC method
 type QuerySupplyRequest struct {
-	// class_id associated with the nft
 	ClassId string `protobuf:"bytes,1,opt,name=class_id,json=classId,proto3" json:"class_id,omitempty"`
 }
 
@@ -279,7 +272,6 @@ func (m *QuerySupplyRequest) GetClassId() string {
 
 // QuerySupplyResponse is the response type for the Query/Supply RPC method
 type QuerySupplyResponse struct {
-	// amount is the number of all NFTs from the given class
 	Amount uint64 `protobuf:"varint,1,opt,name=amount,proto3" json:"amount,omitempty"`
 }
 
@@ -325,11 +317,8 @@ func (m *QuerySupplyResponse) GetAmount() uint64 {
 
 // QueryNFTstRequest is the request type for the Query/NFTs RPC method
 type QueryNFTsRequest struct {
-	// class_id associated with the nft
-	ClassId string `protobuf:"bytes,1,opt,name=class_id,json=classId,proto3" json:"class_id,omitempty"`
-	// owner is the owner address of the nft
-	Owner string `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
-	// pagination defines an optional pagination for the request.
+	ClassId    string             `protobuf:"bytes,1,opt,name=class_id,json=classId,proto3" json:"class_id,omitempty"`
+	Owner      string             `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
 	Pagination *query.PageRequest `protobuf:"bytes,3,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 
@@ -389,9 +378,7 @@ func (m *QueryNFTsRequest) GetPagination() *query.PageRequest {
 
 // QueryNFTsResponse is the response type for the Query/NFTs RPC methods
 type QueryNFTsResponse struct {
-	// NFT defines the NFT
-	Nfts []*NFT `protobuf:"bytes,1,rep,name=nfts,proto3" json:"nfts,omitempty"`
-	// pagination defines the pagination in the response.
+	Nfts       []*NFT              `protobuf:"bytes,1,rep,name=nfts,proto3" json:"nfts,omitempty"`
 	Pagination *query.PageResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 
@@ -444,10 +431,8 @@ func (m *QueryNFTsResponse) GetPagination() *query.PageResponse {
 
 // QueryNFTRequest is the request type for the Query/NFT RPC method
 type QueryNFTRequest struct {
-	// class_id associated with the nft
 	ClassId string `protobuf:"bytes,1,opt,name=class_id,json=classId,proto3" json:"class_id,omitempty"`
-	// id is a unique identifier of the NFT
-	Id string `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Id      string `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 }
 
 func (m *QueryNFTRequest) Reset()         { *m = QueryNFTRequest{} }
@@ -499,7 +484,6 @@ func (m *QueryNFTRequest) GetId() string {
 
 // QueryNFTResponse is the response type for the Query/NFT RPC method
 type QueryNFTResponse struct {
-	// owner is the owner address of the nft
 	Nft *NFT `protobuf:"bytes,1,opt,name=nft,proto3" json:"nft,omitempty"`
 }
 
@@ -545,7 +529,6 @@ func (m *QueryNFTResponse) GetNft() *NFT {
 
 // QueryClassRequest is the request type for the Query/Class RPC method
 type QueryClassRequest struct {
-	// class_id associated with the nft
 	ClassId string `protobuf:"bytes,1,opt,name=class_id,json=classId,proto3" json:"class_id,omitempty"`
 }
 
@@ -591,7 +574,6 @@ func (m *QueryClassRequest) GetClassId() string {
 
 // QueryClassResponse is the response type for the Query/Class RPC method
 type QueryClassResponse struct {
-	// class defines the class of the nft type.
 	Class *Class `protobuf:"bytes,1,opt,name=class,proto3" json:"class,omitempty"`
 }
 
@@ -683,9 +665,7 @@ func (m *QueryClassesRequest) GetPagination() *query.PageRequest {
 
 // QueryClassesResponse is the response type for the Query/Classes RPC method
 type QueryClassesResponse struct {
-	// class defines the class of the nft type.
-	Classes []*Class `protobuf:"bytes,1,rep,name=classes,proto3" json:"classes,omitempty"`
-	// pagination defines the pagination in the response.
+	Classes    []*Class            `protobuf:"bytes,1,rep,name=classes,proto3" json:"classes,omitempty"`
 	Pagination *query.PageResponse `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
 }
 

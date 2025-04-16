@@ -1,26 +1,21 @@
-package module
+package nft
 
 import (
 	"context"
 	"encoding/json"
+	"math/rand"
 
-	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/spf13/cobra"
 	abci "github.com/tendermint/tendermint/abci/types"
-
-	"cosmossdk.io/core/appmodule"
-	"cosmossdk.io/depinject"
 
 	sdkclient "github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
-	store "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
-
-	modulev1 "cosmossdk.io/api/cosmos/nft/module/v1"
 
 	"github.com/cosmos/cosmos-sdk/x/nft"
 	"github.com/cosmos/cosmos-sdk/x/nft/client/cli"
@@ -76,7 +71,7 @@ func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config sdkclient.TxEn
 }
 
 // RegisterGRPCGatewayRoutes registers the gRPC Gateway routes for the nft module.
-func (a AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx sdkclient.Context, mux *gwruntime.ServeMux) {
+func (a AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx sdkclient.Context, mux *runtime.ServeMux) {
 	if err := nft.RegisterQueryHandlerClient(context.Background(), mux, nft.NewQueryClient(clientCtx)); err != nil {
 		panic(err)
 	}
@@ -113,14 +108,6 @@ func NewAppModule(cdc codec.Codec, keeper keeper.Keeper, ak nft.AccountKeeper, b
 	}
 }
 
-var _ appmodule.AppModule = AppModule{}
-
-// IsOnePerModuleType implements the depinject.OnePerModuleType interface.
-func (am AppModule) IsOnePerModuleType() {}
-
-// IsAppModule implements the appmodule.AppModule interface.
-func (am AppModule) IsAppModule() {}
-
 // Name returns the nft module's name.
 func (AppModule) Name() string {
 	return nft.ModuleName
@@ -129,7 +116,20 @@ func (AppModule) Name() string {
 // RegisterInvariants does nothing, there are no invariants to enforce
 func (AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {}
 
+// Route returns the message routing key for the staking module.
+func (am AppModule) Route() sdk.Route {
+	return sdk.NewRoute(nft.RouterKey, nil)
+}
+
 func (am AppModule) NewHandler() sdk.Handler {
+	return nil
+}
+
+// QuerierRoute returns the route we respond to for abci queries
+func (AppModule) QuerierRoute() string { return "" }
+
+// LegacyQuerierHandler returns the nft module sdk.Querier.
+func (am AppModule) LegacyQuerierHandler(legacyQuerierCdc *codec.LegacyAmino) sdk.Querier {
 	return nil
 }
 
@@ -167,6 +167,11 @@ func (am AppModule) ProposalContents(simState module.SimulationState) []simtypes
 	return nil
 }
 
+// RandomizedParams creates randomized nft param changes for the simulator.
+func (AppModule) RandomizedParams(r *rand.Rand) []simtypes.ParamChange {
+	return nil
+}
+
 // RegisterStoreDecoder registers a decoder for nft module's types
 func (am AppModule) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {
 	sdr[keeper.StoreKey] = simulation.NewDecodeStore(am.cdc)
@@ -179,39 +184,4 @@ func (am AppModule) WeightedOperations(simState module.SimulationState) []simtyp
 		simState.AppParams, simState.Cdc,
 		am.accountKeeper, am.bankKeeper, am.keeper,
 	)
-}
-
-//
-// App Wiring Setup
-//
-
-func init() {
-	appmodule.Register(&modulev1.Module{},
-		appmodule.Provide(ProvideModule),
-	)
-}
-
-type NftInputs struct {
-	depinject.In
-
-	Key      *store.KVStoreKey
-	Cdc      codec.Codec
-	Registry cdctypes.InterfaceRegistry
-
-	AccountKeeper nft.AccountKeeper
-	BankKeeper    nft.BankKeeper
-}
-
-type NftOutputs struct {
-	depinject.Out
-
-	NFTKeeper keeper.Keeper
-	Module    appmodule.AppModule
-}
-
-func ProvideModule(in NftInputs) NftOutputs {
-	k := keeper.NewKeeper(in.Key, in.Cdc, in.AccountKeeper, in.BankKeeper)
-	m := NewAppModule(in.Cdc, k, in.AccountKeeper, in.BankKeeper, in.Registry)
-
-	return NftOutputs{NFTKeeper: k, Module: m}
 }

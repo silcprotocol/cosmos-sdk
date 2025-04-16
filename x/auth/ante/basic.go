@@ -53,15 +53,14 @@ func (vmd ValidateMemoDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simulate
 		return ctx, sdkerrors.Wrap(sdkerrors.ErrTxDecode, "invalid transaction type")
 	}
 
+	params := vmd.ak.GetParams(ctx)
+
 	memoLength := len(memoTx.GetMemo())
-	if memoLength > 0 {
-		params := vmd.ak.GetParams(ctx)
-		if uint64(memoLength) > params.MaxMemoCharacters {
-			return ctx, sdkerrors.Wrapf(sdkerrors.ErrMemoTooLarge,
-				"maximum number of characters is %d but received %d characters",
-				params.MaxMemoCharacters, memoLength,
-			)
-		}
+	if uint64(memoLength) > params.MaxMemoCharacters {
+		return ctx, sdkerrors.Wrapf(sdkerrors.ErrMemoTooLarge,
+			"maximum number of characters is %d but received %d characters",
+			params.MaxMemoCharacters, memoLength,
+		)
 	}
 
 	return next(ctx, tx, simulate)
@@ -122,7 +121,7 @@ func (cgts ConsumeTxSizeGasDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, sim
 			}
 
 			// use stdsignature to mock the size of a full signature
-			simSig := legacytx.StdSignature{ //nolint:staticcheck // SA1019: legacytx.StdSignature is deprecated
+			simSig := legacytx.StdSignature{ //nolint:staticcheck // this will be removed when proto is ready
 				Signature: simSecp256k1Sig[:],
 				PubKey:    pubkey,
 			}

@@ -7,10 +7,14 @@ import (
 	"io"
 	"os"
 
-	"github.com/cosmos/gogoproto/proto"
 	"github.com/spf13/viper"
-	"google.golang.org/grpc"
+
 	"sigs.k8s.io/yaml"
+
+	"google.golang.org/grpc"
+
+	"github.com/gogo/protobuf/proto"
+	rpcclient "github.com/tendermint/tendermint/rpc/client"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -25,7 +29,7 @@ type PreprocessTxFn func(chainID string, key keyring.KeyType, tx TxBuilder) erro
 // handling and queries.
 type Context struct {
 	FromAddress       sdk.AccAddress
-	Client            TendermintRPC
+	Client            rpcclient.Client
 	GRPCClient        *grpc.ClientConn
 	ChainID           string
 	Codec             codec.Codec
@@ -47,6 +51,7 @@ type Context struct {
 	GenerateOnly      bool
 	Offline           bool
 	SkipConfirm       bool
+	PreprocessTxHook  PreprocessTxFn
 	TxConfig          TxConfig
 	AccountRetriever  AccountRetriever
 	NodeURI           string
@@ -54,7 +59,6 @@ type Context struct {
 	FeeGranter        sdk.AccAddress
 	Viper             *viper.Viper
 	LedgerHasProtobuf bool
-	PreprocessTxHook  PreprocessTxFn
 
 	// IsAux is true when the signer is an auxiliary signer (e.g. the tipper).
 	IsAux bool
@@ -129,7 +133,7 @@ func (ctx Context) WithHeight(height int64) Context {
 
 // WithClient returns a copy of the context with an updated RPC client
 // instance.
-func (ctx Context) WithClient(client TendermintRPC) Context {
+func (ctx Context) WithClient(client rpcclient.Client) Context {
 	ctx.Client = client
 	return ctx
 }
@@ -267,17 +271,17 @@ func (ctx Context) WithAux(isAux bool) Context {
 	return ctx
 }
 
-// WithLedgerHasProto returns the context with the provided boolean value, indicating
-// whether the target Ledger application can support Protobuf payloads.
-func (ctx Context) WithLedgerHasProtobuf(val bool) Context {
-	ctx.LedgerHasProtobuf = val
-	return ctx
-}
-
 // WithPreprocessTxHook returns the context with the provided preprocessing hook, which
 // enables chains to preprocess the transaction using the builder.
 func (ctx Context) WithPreprocessTxHook(preprocessFn PreprocessTxFn) Context {
 	ctx.PreprocessTxHook = preprocessFn
+	return ctx
+}
+
+// WithLedgerHasProto returns the context with the provided boolean value, indicating
+// whether the target Ledger application can support Protobuf payloads.
+func (ctx Context) WithLedgerHasProtobuf(val bool) Context {
+	ctx.LedgerHasProtobuf = val
 	return ctx
 }
 

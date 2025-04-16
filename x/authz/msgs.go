@@ -5,7 +5,7 @@ import (
 
 	authzcodec "github.com/cosmos/cosmos-sdk/x/authz/codec"
 
-	"github.com/cosmos/gogoproto/proto"
+	"github.com/gogo/protobuf/proto"
 
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -220,16 +220,6 @@ func (msg MsgExec) ValidateBasic() error {
 
 	if len(msg.Msgs) == 0 {
 		return sdkerrors.ErrInvalidRequest.Wrapf("messages cannot be empty")
-	}
-
-	msgs, err := msg.GetMessages()
-	if err != nil {
-		return err
-	}
-	for _, msg := range msgs {
-		if err = msg.ValidateBasic(); err != nil {
-			return err
-		}
 	}
 
 	return nil

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	gateway "github.com/cosmos/gogogateway"
+	"github.com/gogo/gateway"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -20,6 +20,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/server/config"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
+
+	// unnamed import of statik for swagger UI support
+	_ "github.com/cosmos/cosmos-sdk/client/docs/statik"
 )
 
 // Server defines the server's API interface.

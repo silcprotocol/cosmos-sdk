@@ -2,13 +2,11 @@ package network
 
 import (
 	"encoding/json"
-	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"time"
 
-	sdkerrors "cosmossdk.io/errors"
+	tmos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
 	pvm "github.com/tendermint/tendermint/privval"
@@ -43,7 +41,7 @@ func startInProcess(cfg Config, val *Validator) error {
 	app := cfg.AppConstructor(*val)
 	genDocProvider := node.DefaultGenesisDocProviderFunc(tmCfg)
 
-	tmNode, err := node.NewNode( //resleak:notresource
+	tmNode, err := node.NewNode(
 		tmCfg,
 		pvm.LoadOrGenFilePV(tmCfg.PrivValidatorKeyFile(), tmCfg.PrivValidatorStateFile()),
 		nodeKey,
@@ -60,6 +58,7 @@ func startInProcess(cfg Config, val *Validator) error {
 	if err := tmNode.Start(); err != nil {
 		return err
 	}
+
 	val.tmNode = tmNode
 
 	if val.RPCAddress != "" {
@@ -73,7 +72,10 @@ func startInProcess(cfg Config, val *Validator) error {
 
 		app.RegisterTxService(val.ClientCtx)
 		app.RegisterTendermintService(val.ClientCtx)
-		app.RegisterNodeService(val.ClientCtx)
+
+		if a, ok := app.(srvtypes.ApplicationQueryService); ok {
+			a.RegisterNodeService(val.ClientCtx)
+		}
 	}
 
 	if val.APIAddress != "" {
@@ -136,7 +138,7 @@ func collectGenFiles(cfg Config, vals []*Validator, outputDir string) error {
 		}
 
 		appState, err := genutil.GenAppStateFromConfig(cfg.Codec, cfg.TxConfig,
-			tmCfg, initCfg, *genDoc, banktypes.GenesisBalancesIterator{}, genutiltypes.DefaultMessageValidator)
+			tmCfg, initCfg, *genDoc, banktypes.GenesisBalancesIterator{})
 		if err != nil {
 			return err
 		}
@@ -192,33 +194,18 @@ func initGenFiles(cfg Config, genAccounts []authtypes.GenesisAccount, genBalance
 }
 
 func writeFile(name string, dir string, contents []byte) error {
-	file := filepath.Join(dir, name)
+	writePath := filepath.Join(dir) //nolint:gocritic
+	file := filepath.Join(writePath, name)
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("could not create directory %q: %w", dir, err)
+	err := tmos.EnsureDir(writePath, 0o755)
+	if err != nil {
+		return err
 	}
 
-	if err := os.WriteFile(file, contents, 0o644); err != nil { //nolint: gosec
+	err = os.WriteFile(file, contents, 0o644) // nolint: gosec
+	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-// Get a free address for a test tendermint server
-// protocol is either tcp, http, etc
-func FreeTCPAddr() (addr, port string, err error) {
-	l, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		return "", "", err
-	}
-
-	if err := l.Close(); err != nil {
-		return "", "", sdkerrors.Wrap(err, "couldn't close the listener")
-	}
-
-	portI := l.Addr().(*net.TCPAddr).Port
-	port = fmt.Sprintf("%d", portI)
-	addr = fmt.Sprintf("tcp://0.0.0.0:%s", port)
-	return
 }

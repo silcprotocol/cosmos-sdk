@@ -10,27 +10,16 @@ import (
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 
-	"github.com/cosmos/gogoproto/jsonpb"
-	proto "github.com/cosmos/gogoproto/proto"
+	"github.com/gogo/protobuf/jsonpb"
+	proto "github.com/gogo/protobuf/proto"
 	abci "github.com/tendermint/tendermint/abci/types"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 )
 
-type EventManagerI interface {
-	Events() Events
-	ABCIEvents() []abci.Event
-	EmitTypedEvent(tev proto.Message) error
-	EmitTypedEvents(tevs ...proto.Message) error
-	EmitEvent(event Event)
-	EmitEvents(events Events)
-}
-
 // ----------------------------------------------------------------------------
 // Event Manager
 // ----------------------------------------------------------------------------
-
-var _ EventManagerI = (*EventManager)(nil)
 
 // EventManager implements a simple wrapper around a slice of Event objects that
 // can be emitted from.
@@ -109,8 +98,8 @@ func TypedEventToEvent(tev proto.Message) (Event, error) {
 	for _, k := range keys {
 		v := attrMap[k]
 		attrs = append(attrs, abci.EventAttribute{
-			Key:   k,
-			Value: string(v),
+			Key:   []byte(k),
+			Value: v,
 		})
 	}
 
@@ -141,7 +130,7 @@ func ParseTypedEvent(event abci.Event) (proto.Message, error) {
 
 	attrMap := make(map[string]json.RawMessage)
 	for _, attr := range event.Attributes {
-		attrMap[attr.Key] = json.RawMessage(attr.Value)
+		attrMap[string(attr.Key)] = json.RawMessage(attr.Value)
 	}
 
 	attrBytes, err := json.Marshal(attrMap)
@@ -197,7 +186,18 @@ func (a Attribute) String() string {
 
 // ToKVPair converts an Attribute object into a Tendermint key/value pair.
 func (a Attribute) ToKVPair() abci.EventAttribute {
-	return abci.EventAttribute{Key: a.Key, Value: a.Value}
+	return abci.EventAttribute{Key: toBytes(a.Key), Value: toBytes(a.Value)}
+}
+
+func toBytes(i interface{}) []byte {
+	switch x := i.(type) {
+	case []uint8:
+		return x
+	case string:
+		return []byte(x)
+	default:
+		panic(i)
+	}
 }
 
 // AppendAttributes adds one or more attributes to an Event.
@@ -206,17 +206,6 @@ func (e Event) AppendAttributes(attrs ...Attribute) Event {
 		e.Attributes = append(e.Attributes, attr.ToKVPair())
 	}
 	return e
-}
-
-// GetAttribute returns an attribute for a given key present in an event.
-// If the key is not found, the boolean value will be false.
-func (e Event) GetAttribute(key string) (Attribute, bool) {
-	for _, attr := range e.Attributes {
-		if attr.Key == key {
-			return Attribute{Key: attr.Key, Value: attr.Value}, true
-		}
-	}
-	return Attribute{}, false
 }
 
 // AppendEvent adds an Event to a slice of events.
@@ -238,19 +227,6 @@ func (e Events) ToABCIEvents() []abci.Event {
 	}
 
 	return res
-}
-
-// GetAttributes returns all attributes matching a given key present in events.
-// If the key is not found, the boolean value will be false.
-func (e Events) GetAttributes(key string) ([]Attribute, bool) {
-	attrs := make([]Attribute, 0)
-	for _, event := range e {
-		if attr, found := event.GetAttribute(key); found {
-			attrs = append(attrs, attr)
-		}
-	}
-
-	return attrs, len(attrs) > 0
 }
 
 // Common event types and attribute keys
@@ -279,10 +255,10 @@ func (se StringEvents) String() string {
 	var sb strings.Builder
 
 	for _, e := range se {
-		fmt.Fprintf(&sb, "\t\t- %s\n", e.Type)
+		sb.WriteString(fmt.Sprintf("\t\t- %s\n", e.Type))
 
 		for _, attr := range e.Attributes {
-			fmt.Fprintf(&sb, "\t\t\t- %s\n", attr)
+			sb.WriteString(fmt.Sprintf("\t\t\t- %s\n", attr.String()))
 		}
 	}
 
@@ -319,7 +295,7 @@ func StringifyEvent(e abci.Event) StringEvent {
 	for _, attr := range e.Attributes {
 		res.Attributes = append(
 			res.Attributes,
-			Attribute{Key: attr.Key, Value: attr.Value},
+			Attribute{Key: string(attr.Key), Value: string(attr.Value)},
 		)
 	}
 

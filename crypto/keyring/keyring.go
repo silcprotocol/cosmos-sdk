@@ -12,13 +12,13 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/pkg/errors"
-	"github.com/tendermint/crypto/bcrypt"
 	tmcrypto "github.com/tendermint/tendermint/crypto"
 
 	"github.com/cosmos/cosmos-sdk/client/input"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/crypto"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/bcrypt"
 	"github.com/cosmos/cosmos-sdk/crypto/ledger"
 	"github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -616,10 +616,6 @@ func SignWithLedger(k *Record, msg []byte) (sig []byte, pub types.PubKey, err er
 		return nil, nil, err
 	}
 
-	if !priv.PubKey().VerifySignature(msg, sig) {
-		return nil, nil, errors.New("Ledger generated an invalid signature. Perhaps you have multiple ledgers and need to try another one")
-	}
-
 	return sig, priv.PubKey(), nil
 }
 
@@ -707,7 +703,7 @@ func newRealPrompt(dir string, buf io.Reader) func(string) (string, error) {
 			}
 
 			buf := bufio.NewReader(buf)
-			pass, err := input.GetPassword(fmt.Sprintf("Enter keyring passphrase (attempt %d/%d):", failureCounter, maxPassphraseEntryAttempts), buf)
+			pass, err := input.GetPassword("Enter keyring passphrase:", buf)
 			if err != nil {
 				// NOTE: LGTM.io reports a false positive alert that states we are printing the password,
 				// but we only log the error.
@@ -874,6 +870,7 @@ func (ks keystore) MigrateAll() ([]*Record, error) {
 	}
 
 	sort.Strings(keys)
+
 	var recs []*Record
 	for _, key := range keys {
 		// The keyring items only with `.info` consists the key info.

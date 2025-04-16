@@ -11,12 +11,13 @@ import (
 
 // AddVote adds a vote on a specific proposal
 func (keeper Keeper) AddVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress, options v1.WeightedVoteOptions, metadata string) error {
-	// Check if proposal is in voting period.
-	store := ctx.KVStore(keeper.storeKey)
-	if !store.Has(types.VotingPeriodProposalKey(proposalID)) {
+	proposal, ok := keeper.GetProposal(ctx, proposalID)
+	if !ok {
+		return sdkerrors.Wrapf(types.ErrUnknownProposal, "%d", proposalID)
+	}
+	if proposal.Status != v1.StatusVotingPeriod {
 		return sdkerrors.Wrapf(types.ErrInactiveProposal, "%d", proposalID)
 	}
-
 	err := keeper.assertMetadataLength(metadata)
 	if err != nil {
 		return err
@@ -32,7 +33,7 @@ func (keeper Keeper) AddVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.A
 	keeper.SetVote(ctx, vote)
 
 	// called after a vote on a proposal is cast
-	keeper.Hooks().AfterProposalVote(ctx, proposalID, voterAddr)
+	keeper.AfterProposalVote(ctx, proposalID, voterAddr)
 
 	ctx.EventManager().EmitEvent(
 		sdk.NewEvent(

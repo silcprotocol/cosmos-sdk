@@ -5,17 +5,17 @@ import (
 	"io"
 	"time"
 
-	dbm "github.com/cosmos/cosmos-db"
-	"github.com/cosmos/gogoproto/grpc"
+	"github.com/gogo/protobuf/grpc"
 	"github.com/spf13/cobra"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/log"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	tmtypes "github.com/tendermint/tendermint/types"
+	dbm "github.com/tendermint/tm-db"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
+	"github.com/cosmos/cosmos-sdk/snapshots"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -54,11 +54,24 @@ type (
 		// RegisterTendermintService registers the gRPC Query service for tendermint queries.
 		RegisterTendermintService(client.Context)
 
+		// Return the multistore instance
+		CommitMultiStore() sdk.CommitMultiStore
+
+		// Return the snapshot manager
+		SnapshotManager() *snapshots.Manager
+
+		// Close is called in start cmd to gracefully cleanup resources.
+		Close() error
+	}
+
+	// ApplicationQueryService defines an extension of the Application interface
+	// that facilitates gRPC query Services.
+	//
+	// NOTE: This interfaces exists only in the v0.46.x line to ensure the existing
+	// Application interface does not introduce API breaking changes.
+	ApplicationQueryService interface {
 		// RegisterNodeService registers the node gRPC Query service.
 		RegisterNodeService(client.Context)
-
-		// CommitMultiStore return the multistore instance
-		CommitMultiStore() sdk.CommitMultiStore
 	}
 
 	// AppCreator is a function that allows us to lazily initialize an
@@ -78,10 +91,10 @@ type (
 		// Height is the app's latest block height.
 		Height int64
 		// ConsensusParams are the exported consensus params for ABCI.
-		ConsensusParams *tmproto.ConsensusParams
+		ConsensusParams *abci.ConsensusParams
 	}
 
 	// AppExporter is a function that dumps all app state to
 	// JSON-serializable structure and returns the current validator set.
-	AppExporter func(log.Logger, dbm.DB, io.Writer, int64, bool, []string, AppOptions, []string) (ExportedApp, error)
+	AppExporter func(log.Logger, dbm.DB, io.Writer, int64, bool, []string, AppOptions) (ExportedApp, error)
 )

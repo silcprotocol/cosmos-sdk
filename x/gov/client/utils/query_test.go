@@ -11,10 +11,9 @@ import (
 	tmtypes "github.com/tendermint/tendermint/types"
 
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/simapp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	"github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx"
-	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/cosmos-sdk/x/gov/client/utils"
 	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
@@ -76,7 +75,7 @@ func (mock TxSearchMock) Block(ctx context.Context, height *int64) (*coretypes.R
 }
 
 func TestGetPaginatedVotes(t *testing.T) {
-	encCfg := moduletestutil.MakeTestEncodingConfig(gov.AppModuleBasic{})
+	encCfg := simapp.MakeTestEncodingConfig()
 
 	type testCase struct {
 		description string

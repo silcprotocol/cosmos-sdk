@@ -1,5 +1,7 @@
 package server
 
+// DONTCOVER
+
 import (
 	"fmt"
 	"net"
@@ -10,7 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tendermint/tendermint/abci/server"
-	tcmd "github.com/tendermint/tendermint/cmd/tendermint/commands"
+	tcmd "github.com/tendermint/tendermint/cmd/cometbft/commands"
+	tmos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
 	pvm "github.com/tendermint/tendermint/privval"
@@ -22,13 +25,15 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/codec"
+	pruningtypes "github.com/cosmos/cosmos-sdk/pruning/types"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servergrpc "github.com/cosmos/cosmos-sdk/server/grpc"
+	"github.com/cosmos/cosmos-sdk/server/rosetta"
+	crgserver "github.com/cosmos/cosmos-sdk/server/rosetta/lib/server"
 	"github.com/cosmos/cosmos-sdk/server/types"
-	pruningtypes "github.com/cosmos/cosmos-sdk/store/pruning/types"
 	"github.com/cosmos/cosmos-sdk/telemetry"
-	"github.com/cosmos/cosmos-sdk/types/mempool"
+	sdktypes "github.com/cosmos/cosmos-sdk/types"
 )
 
 const (
@@ -53,6 +58,7 @@ const (
 	FlagMinRetainBlocks     = "min-retain-blocks"
 	FlagIAVLCacheSize       = "iavl-cache-size"
 	FlagDisableIAVLFastNode = "iavl-disable-fastnode"
+	FlagIAVLLazyLoading     = "iavl-lazy-loading"
 
 	// state sync-related flags
 	FlagStateSyncSnapshotInterval   = "state-sync.snapshot-interval"
@@ -74,9 +80,6 @@ const (
 	flagGRPCAddress    = "grpc.address"
 	flagGRPCWebEnable  = "grpc-web.enable"
 	flagGRPCWebAddress = "grpc-web.address"
-
-	// mempool flags
-	FlagMempoolMaxTxs = "mempool.max-txs"
 )
 
 // StartCmd runs the service passed in, either stand-alone or in-process with
@@ -134,11 +137,15 @@ is performed. Note, when enabled, gRPC will also be automatically enabled.
 			withTM, _ := cmd.Flags().GetBool(flagWithTendermint)
 			if !withTM {
 				serverCtx.Logger.Info("starting ABCI without Tendermint")
-				return startStandAlone(serverCtx, appCreator)
+				return WrapCPUProfile(serverCtx, func() error {
+					return startStandAlone(serverCtx, appCreator)
+				})
 			}
 
 			// amino is needed here for backwards compatibility of REST routes
-			err = startInProcess(serverCtx, clientCtx, appCreator)
+			err = WrapCPUProfile(serverCtx, func() error {
+				return startInProcess(serverCtx, clientCtx, appCreator)
+			})
 			errCode, ok := err.(ErrorCode)
 			if !ok {
 				return err
@@ -188,8 +195,6 @@ is performed. Note, when enabled, gRPC will also be automatically enabled.
 
 	cmd.Flags().Bool(FlagDisableIAVLFastNode, false, "Disable fast node for IAVL tree")
 
-	cmd.Flags().Int(FlagMempoolMaxTxs, mempool.DefaultMaxTx, "Sets MaxTx value for the app-side mempool")
-
 	// add support for all Tendermint-specific command line options
 	tcmd.AddNodeFlags(cmd)
 	return cmd
@@ -232,14 +237,16 @@ func startStandAlone(ctx *Context, appCreator types.AppCreator) error {
 
 	err = svr.Start()
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		tmos.Exit(err.Error())
 	}
 
 	defer func() {
 		if err = svr.Stop(); err != nil {
-			fmt.Println(err.Error())
-			os.Exit(1)
+			tmos.Exit(err.Error())
+		}
+
+		if err = app.Close(); err != nil {
+			tmos.Exit(err.Error())
 		}
 	}()
 
@@ -250,27 +257,6 @@ func startStandAlone(ctx *Context, appCreator types.AppCreator) error {
 func startInProcess(ctx *Context, clientCtx client.Context, appCreator types.AppCreator) error {
 	cfg := ctx.Config
 	home := cfg.RootDir
-	var cpuProfileCleanup func()
-
-	if cpuProfile := ctx.Viper.GetString(flagCPUProfile); cpuProfile != "" {
-		f, err := os.Create(cpuProfile)
-		if err != nil {
-			return err
-		}
-
-		ctx.Logger.Info("starting CPU profiler", "profile", cpuProfile)
-		if err := pprof.StartCPUProfile(f); err != nil {
-			return err
-		}
-
-		cpuProfileCleanup = func() {
-			ctx.Logger.Info("stopping CPU profiler", "profile", cpuProfile)
-			pprof.StopCPUProfile()
-			if err := f.Close(); err != nil {
-				ctx.Logger.Info("failed to close cpu-profile file", "profile", cpuProfile, "err", err.Error())
-			}
-		}
-	}
 
 	db, err := openDB(home, GetAppDBBackend(ctx.Viper))
 	if err != nil {
@@ -281,22 +267,6 @@ func startInProcess(ctx *Context, clientCtx client.Context, appCreator types.App
 	traceWriter, err := openTraceWriter(traceWriterFile)
 	if err != nil {
 		return err
-	}
-
-	// Clean up the traceWriter in the cpuProfileCleanup routine that is invoked
-	// when the server is shutting down.
-	fn := cpuProfileCleanup
-	cpuProfileCleanup = func() {
-		if fn != nil {
-			fn()
-		}
-
-		// if flagTraceStore is not used then traceWriter is nil
-		if traceWriter != nil {
-			if err = traceWriter.Close(); err != nil {
-				ctx.Logger.Error("failed to close trace writer", "err", err)
-			}
-		}
 	}
 
 	config, err := serverconfig.GetConfig(ctx.Viper)
@@ -314,6 +284,7 @@ func startInProcess(ctx *Context, clientCtx client.Context, appCreator types.App
 	if err != nil {
 		return err
 	}
+
 	genDocProvider := node.DefaultGenesisDocProviderFunc(cfg)
 
 	var (
@@ -340,7 +311,6 @@ func startInProcess(ctx *Context, clientCtx client.Context, appCreator types.App
 		if err != nil {
 			return err
 		}
-
 		if err := tmNode.Start(); err != nil {
 			return err
 		}
@@ -356,7 +326,10 @@ func startInProcess(ctx *Context, clientCtx client.Context, appCreator types.App
 
 		app.RegisterTxService(clientCtx)
 		app.RegisterTendermintService(clientCtx)
-		app.RegisterNodeService(clientCtx)
+
+		if a, ok := app.(types.ApplicationQueryService); ok {
+			a.RegisterNodeService(clientCtx)
+		}
 	}
 
 	metrics, err := startTelemetry(config)
@@ -456,19 +429,67 @@ func startInProcess(ctx *Context, clientCtx client.Context, appCreator types.App
 	}
 
 	// At this point it is safe to block the process if we're in gRPC only mode as
-	// we do not need to handle any Tendermint related processes.
+	// we do not need to start Rosetta or handle any Tendermint related processes.
 	if gRPCOnly {
 		// wait for signal capture and gracefully return
 		return WaitForQuitSignals()
 	}
 
+	var rosettaSrv crgserver.Server
+	if config.Rosetta.Enable {
+		offlineMode := config.Rosetta.Offline
+
+		// If GRPC is not enabled rosetta cannot work in online mode, so it works in
+		// offline mode.
+		if !config.GRPC.Enable {
+			offlineMode = true
+		}
+
+		minGasPrices, err := sdktypes.ParseDecCoins(config.MinGasPrices)
+		if err != nil {
+			ctx.Logger.Error("failed to parse minimum-gas-prices: ", err)
+			return err
+		}
+
+		conf := &rosetta.Config{
+			Blockchain:          config.Rosetta.Blockchain,
+			Network:             config.Rosetta.Network,
+			TendermintRPC:       ctx.Config.RPC.ListenAddress,
+			GRPCEndpoint:        config.GRPC.Address,
+			Addr:                config.Rosetta.Address,
+			Retries:             config.Rosetta.Retries,
+			Offline:             offlineMode,
+			GasToSuggest:        config.Rosetta.GasToSuggest,
+			EnableFeeSuggestion: config.Rosetta.EnableFeeSuggestion,
+			GasPrices:           minGasPrices.Sort(),
+			Codec:               clientCtx.Codec.(*codec.ProtoCodec),
+			InterfaceRegistry:   clientCtx.InterfaceRegistry,
+		}
+
+		rosettaSrv, err = rosetta.ServerFromConfig(conf)
+		if err != nil {
+			return err
+		}
+
+		errCh := make(chan error)
+		go func() {
+			if err := rosettaSrv.Start(); err != nil {
+				errCh <- err
+			}
+		}()
+
+		select {
+		case err := <-errCh:
+			return err
+
+		case <-time.After(types.ServerStartTime): // assume server started successfully
+		}
+	}
+
 	defer func() {
 		if tmNode != nil && tmNode.IsRunning() {
 			_ = tmNode.Stop()
-		}
-
-		if cpuProfileCleanup != nil {
-			cpuProfileCleanup()
+			_ = app.Close()
 		}
 
 		if apiSrv != nil {
@@ -487,4 +508,41 @@ func startTelemetry(cfg serverconfig.Config) (*telemetry.Metrics, error) {
 		return nil, nil
 	}
 	return telemetry.New(cfg.Telemetry)
+}
+
+// WrapCPUProfile runs callback in a goroutine, then wait for quit signals.
+func WrapCPUProfile(ctx *Context, callback func() error) error {
+	if cpuProfile := ctx.Viper.GetString(flagCPUProfile); cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
+		if err != nil {
+			return err
+		}
+
+		ctx.Logger.Info("starting CPU profiler", "profile", cpuProfile)
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+
+		defer func() {
+			ctx.Logger.Info("stopping CPU profiler", "profile", cpuProfile)
+			pprof.StopCPUProfile()
+			if err := f.Close(); err != nil {
+				ctx.Logger.Info("failed to close cpu-profile file", "profile", cpuProfile, "err", err.Error())
+			}
+		}()
+	}
+
+	errCh := make(chan error)
+	go func() {
+		errCh <- callback()
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+
+	case <-time.After(types.ServerStartTime):
+	}
+
+	return WaitForQuitSignals()
 }

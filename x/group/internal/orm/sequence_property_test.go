@@ -1,4 +1,3 @@
-//nolint:unused // contains tests
 package orm
 
 import (
@@ -10,7 +9,7 @@ import (
 )
 
 func TestSequence(t *testing.T) {
-	rapid.Check(t, rapid.Run[*sequenceMachine]())
+	rapid.Check(t, rapid.Run(&sequenceMachine{}))
 }
 
 // sequenceMachine is a state machine model of Sequence. It simply uses a uint64
@@ -33,7 +32,7 @@ func (m *sequenceMachine) Init(t *rapid.T) {
 	m.seq = &seq
 
 	// Choose initial sequence value
-	initSeqVal := rapid.Uint64().Draw(t, "initSeqVal")
+	initSeqVal := rapid.Uint64().Draw(t, "initSeqVal").(uint64)
 	err := m.seq.InitVal(m.store, initSeqVal)
 	require.NoError(t, err)
 

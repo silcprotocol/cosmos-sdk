@@ -4,7 +4,7 @@ import (
 	gocontext "context"
 	"fmt"
 
-	gogogrpc "github.com/cosmos/gogoproto/grpc"
+	gogogrpc "github.com/gogo/protobuf/grpc"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"google.golang.org/grpc"
 

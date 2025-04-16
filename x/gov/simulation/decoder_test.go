@@ -6,14 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
+	"github.com/cosmos/cosmos-sdk/simapp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/kv"
-	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
-	"github.com/cosmos/cosmos-sdk/x/gov"
 	"github.com/cosmos/cosmos-sdk/x/gov/simulation"
 	"github.com/cosmos/cosmos-sdk/x/gov/types"
 	"github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
@@ -25,7 +23,7 @@ var (
 )
 
 func TestDecodeStore(t *testing.T) {
-	cdc := moduletestutil.MakeTestEncodingConfig(gov.AppModuleBasic{}).Codec
+	cdc := simapp.MakeTestEncodingConfig().Codec
 	dec := simulation.NewDecodeStore(cdc)
 
 	endTime := time.Now().UTC()
@@ -38,7 +36,7 @@ func TestDecodeStore(t *testing.T) {
 
 	proposalIDBz := make([]byte, 8)
 	binary.LittleEndian.PutUint64(proposalIDBz, 1)
-	deposit := v1beta1.NewDeposit(1, delAddr1, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, math.OneInt())))
+	deposit := v1beta1.NewDeposit(1, delAddr1, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, sdk.OneInt())))
 	vote := v1beta1.NewVote(1, delAddr1, v1beta1.NewNonSplitVoteOption(v1beta1.OptionYes))
 
 	proposalBzA, err := cdc.Marshal(&proposalA)

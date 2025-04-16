@@ -59,7 +59,7 @@ func TestValidateBasic(t *testing.T) {
 	// Ensure validators are not sorted
 	for sort.IsSorted(types.Validators(validators)) {
 		rand.Shuffle(len(validators), func(i, j int) {
-			it := validators[i] //nolint:gocritic
+			it := validators[i]
 			validators[i] = validators[j]
 			validators[j] = it
 		})

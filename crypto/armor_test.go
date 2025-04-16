@@ -9,20 +9,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tendermint/crypto/bcrypt"
 	tmcrypto "github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/xsalsa20symmetric"
 
-	"cosmossdk.io/depinject"
-	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/legacy"
 	"github.com/cosmos/cosmos-sdk/crypto"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/bcrypt"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
-	_ "github.com/cosmos/cosmos-sdk/runtime"
-	"github.com/cosmos/cosmos-sdk/testutil/configurator"
+	"github.com/cosmos/cosmos-sdk/simapp"
 	"github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -74,11 +71,8 @@ func TestArmorUnarmorPrivKey(t *testing.T) {
 
 func TestArmorUnarmorPubKey(t *testing.T) {
 	// Select the encryption and storage for your cryptostore
-	var cdc codec.Codec
-	err := depinject.Inject(configurator.NewAppConfig(), &cdc)
-	require.NoError(t, err)
-
-	cstore := keyring.NewInMemory(cdc)
+	encCfg := simapp.MakeTestEncodingConfig()
+	cstore := keyring.NewInMemory(encCfg.Codec)
 
 	// Add keys and see they return in alphabetical order
 	k, _, err := cstore.NewMnemonic("Bob", keyring.English, types.FullFundraiserPath, keyring.DefaultBIP39Passphrase, hd.Secp256k1)

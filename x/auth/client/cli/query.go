@@ -141,15 +141,13 @@ func GetAccountAddressByIDCmd() *cobra.Command {
 				return err
 			}
 
-			accNum, err := strconv.ParseUint(args[0], 10, 64)
+			accNum, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				return err
 			}
 
 			queryClient := types.NewQueryClient(clientCtx)
-			res, err := queryClient.AccountAddressByID(cmd.Context(), &types.QueryAccountAddressByIDRequest{
-				AccountId: accNum,
-			})
+			res, err := queryClient.AccountAddressByID(cmd.Context(), &types.QueryAccountAddressByIDRequest{Id: accNum})
 			if err != nil {
 				return err
 			}
@@ -371,7 +369,7 @@ $ %s query tx --%s=%s <sig1_base64>,<sig2_base64...>
 				}
 			case typeSig:
 				{
-					sigParts, err := ParseSigArgs(args)
+					sigParts, err := parseSigArgs(args)
 					if err != nil {
 						return err
 					}
@@ -429,8 +427,8 @@ $ %s query tx --%s=%s <sig1_base64>,<sig2_base64...>
 	return cmd
 }
 
-// ParseSigArgs parses comma-separated signatures from the CLI arguments.
-func ParseSigArgs(args []string) ([]string, error) {
+// parseSigArgs parses comma-separated signatures from the CLI arguments.
+func parseSigArgs(args []string) ([]string, error) {
 	if len(args) != 1 || args[0] == "" {
 		return nil, fmt.Errorf("argument should be comma-separated signatures")
 	}

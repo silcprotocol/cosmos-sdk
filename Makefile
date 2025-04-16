@@ -12,12 +12,14 @@ SIMAPP = ./simapp
 MOCKS_DIR = $(CURDIR)/tests/mocks
 HTTPS_GIT := https://github.com/cosmos/cosmos-sdk.git
 DOCKER := $(shell which docker)
+DOCKER_BUF := $(DOCKER) run --rm -v $(CURDIR):/workspace --workdir /workspace bufbuild/buf:1.0.0-rc8
 PROJECT_NAME = $(shell git remote get-url origin | xargs basename -s .git)
-# RocksDB is a native dependency, so we don't assume the library is installed.
-# Instead, it must be explicitly enabled and we warn when it is not.
-ENABLE_ROCKSDB ?= false
+DOCS_DOMAIN=docs.cosmos.network
+
+export GO111MODULE = on
 
 # process build tags
+
 build_tags = netgo
 ifeq ($(LEDGER_ENABLED),true)
   ifeq ($(OS),Windows_NT)
@@ -46,10 +48,6 @@ ifeq (secp,$(findstring secp,$(COSMOS_BUILD_OPTIONS)))
   build_tags += libsecp256k1_sdk
 endif
 
-ifeq (legacy,$(findstring legacy,$(COSMOS_BUILD_OPTIONS)))
-  build_tags += app_v1
-endif
-
 whitespace :=
 whitespace += $(whitespace)
 comma := ,
@@ -62,31 +60,23 @@ ldflags = -X github.com/cosmos/cosmos-sdk/version.Name=sim \
 		  -X github.com/cosmos/cosmos-sdk/version.Version=$(VERSION) \
 		  -X github.com/cosmos/cosmos-sdk/version.Commit=$(COMMIT) \
 		  -X "github.com/cosmos/cosmos-sdk/version.BuildTags=$(build_tags_comma_sep)" \
-			-X github.com/tendermint/tendermint/version.TMCoreSemVer=$(TMVERSION)
-
-ifeq ($(ENABLE_ROCKSDB),true)
-  BUILD_TAGS += rocksdb_build
-  test_tags += rocksdb_build
-endif
+		  -X github.com/tendermint/tendermint/version.TMCoreSemVer=$(TMVERSION)
 
 # DB backend selection
 ifeq (cleveldb,$(findstring cleveldb,$(COSMOS_BUILD_OPTIONS)))
   build_tags += gcc
 endif
 ifeq (badgerdb,$(findstring badgerdb,$(COSMOS_BUILD_OPTIONS)))
-  BUILD_TAGS += badgerdb
+  build_tags += badgerdb
 endif
 # handle rocksdb
 ifeq (rocksdb,$(findstring rocksdb,$(COSMOS_BUILD_OPTIONS)))
-  ifneq ($(ENABLE_ROCKSDB),true)
-    $(error Cannot use RocksDB backend unless ENABLE_ROCKSDB=true)
-  endif
   CGO_ENABLED=1
-  BUILD_TAGS += rocksdb
+  build_tags += rocksdb
 endif
 # handle boltdb
 ifeq (boltdb,$(findstring boltdb,$(COSMOS_BUILD_OPTIONS)))
-  BUILD_TAGS += boltdb
+  build_tags += boltdb
 endif
 
 ifeq (,$(findstring nostrip,$(COSMOS_BUILD_OPTIONS)))
@@ -109,7 +99,7 @@ ifeq (debug,$(findstring debug,$(COSMOS_BUILD_OPTIONS)))
   BUILD_FLAGS += -gcflags "all=-N -l"
 endif
 
-all: tools build lint test vulncheck
+all: tools build lint test
 
 # The below include contains the tools and runsim targets.
 include contrib/devtools/Makefile
@@ -121,40 +111,33 @@ include contrib/devtools/Makefile
 BUILD_TARGETS := build install
 
 build: BUILD_ARGS=-o $(BUILDDIR)/
-
-build-linux-amd64:
-	GOOS=linux GOARCH=amd64 LEDGER_ENABLED=false $(MAKE) build
-	
-build-linux-arm64:
-	GOOS=linux GOARCH=arm64 LEDGER_ENABLED=false $(MAKE) build
+build-linux:
+	GOOS=linux GOARCH=$(if $(findstring aarch64,$(shell uname -m)) || $(findstring arm64,$(shell uname -m)),arm64,amd64) LEDGER_ENABLED=false $(MAKE) build
 
 $(BUILD_TARGETS): go.sum $(BUILDDIR)/
-	cd ${CURRENT_DIR}/simapp && go $@ -mod=readonly $(BUILD_FLAGS) $(BUILD_ARGS) ./...
+	go $@ -mod=readonly $(BUILD_FLAGS) $(BUILD_ARGS) ./...
 
 $(BUILDDIR)/:
 	mkdir -p $(BUILDDIR)/
 
 cosmovisor:
-	$(MAKE) -C tools/cosmovisor cosmovisor
+	$(MAKE) -C cosmovisor cosmovisor
 
-rosetta:
-	$(MAKE) -C tools/rosetta rosetta
+.PHONY: build build-linux cosmovisor
 
-confix:
-	$(MAKE) -C tools/confix confix
-
-.PHONY: build build-linux-amd64 build-linux-arm64 cosmovisor rosetta confix
-
+mockgen_cmd=go run github.com/golang/mock/mockgen
 
 mocks: $(MOCKS_DIR)
-	@go install github.com/golang/mock/mockgen@v1.6.0
-	sh ./scripts/mockgen.sh
+	$(mockgen_cmd) -source=client/account_retriever.go -package mocks -destination tests/mocks/account_retriever.go
+	$(mockgen_cmd) -package mocks -destination tests/mocks/tendermint_tm_db_DB.go github.com/tendermint/tm-db DB
+	$(mockgen_cmd) -source db/types.go -package mocks -destination tests/mocks/db/types.go
+	$(mockgen_cmd) -source=types/module/module.go -package mocks -destination tests/mocks/types_module_module.go
+	$(mockgen_cmd) -source=types/invariant.go -package mocks -destination tests/mocks/types_invariant.go
+	$(mockgen_cmd) -source=types/router.go -package mocks -destination tests/mocks/types_router.go
+	$(mockgen_cmd) -package mocks -destination tests/mocks/grpc_server.go github.com/gogo/protobuf/grpc Server
+	$(mockgen_cmd) -package mocks -destination tests/mocks/tendermint_tendermint_libs_log_DB.go github.com/tendermint/tendermint/libs/log Logger
+	$(mockgen_cmd) -source=orm/model/ormtable/hooks.go -package ormmocks -destination orm/testing/ormmocks/hooks.go
 .PHONY: mocks
-
-
-vulncheck: $(BUILDDIR)/
-	GOBIN=$(BUILDDIR) go install golang.org/x/vuln/cmd/govulncheck@latest
-	$(BUILDDIR)/govulncheck ./...
 
 $(MOCKS_DIR):
 	mkdir -p $(MOCKS_DIR)
@@ -195,8 +178,20 @@ godocs:
 	@echo "--> Wait a few seconds and visit http://localhost:6060/pkg/github.com/cosmos/cosmos-sdk/types"
 	godoc -http=:6060
 
+# This builds a docs site for each branch/tag in `./docs/versions`
+# and copies each site to a version prefixed path. The last entry inside
+# the `versions` file will be the default root index.html (and it should be main).
 build-docs:
-	@cd docs && DOCS_DOMAIN=docs.cosmos.network sh ./build-all.sh
+	@cd docs && \
+	while read -r branch path_prefix; do \
+		echo "building branch $${branch}" ; \
+		(git clean -fdx && git reset --hard && git checkout $${branch} && npm install && VUEPRESS_BASE="/$${path_prefix}/" npm run build) ; \
+		mkdir -p ~/output/$${path_prefix} ; \
+		cp -r .vuepress/dist/* ~/output/$${path_prefix}/ ; \
+		cp ~/output/$${path_prefix}/index.html ~/output ; \
+		cp ~/output/$${path_prefix}/404.html ~/output ; \
+	done < versions ;
+	@echo $(DOCS_DOMAIN) > ~/output/CNAME
 
 .PHONY: build-docs
 
@@ -205,15 +200,7 @@ build-docs:
 ###############################################################################
 
 test: test-unit
-test-e2e:
-	$(MAKE) -C tests test-e2e
-test-e2e-cov:
-	$(MAKE) -C tests test-e2e-cov
-test-integration:
-	$(MAKE) -C tests test-integration
-test-integration-cov:
-	$(MAKE) -C tests test-integration-cov
-test-all: test-unit test-e2e test-integration test-ledger-mock test-race
+test-all: test-unit test-ledger-mock test-race test-cover
 
 TEST_PACKAGES=./...
 TEST_TARGETS := test-unit test-unit-amino test-unit-proto test-ledger-mock test-race test-ledger test-race
@@ -244,65 +231,57 @@ CURRENT_DIR = $(shell pwd)
 run-tests:
 ifneq (,$(shell which tparse 2>/dev/null))
 	@echo "Starting unit tests"; \
-	finalec=0; \
 	for module in $(SUB_MODULES); do \
 		cd ${CURRENT_DIR}/$$module; \
 		echo "Running unit tests for module $$module"; \
 		go test -mod=readonly -json $(ARGS) $(TEST_PACKAGES) ./... | tparse; \
-		ec=$$?; \
-		if [ "$$ec" -ne '0' ]; then finalec=$$ec; fi; \
-	done; \
-	exit $$finalec
+    done
 else
 	@echo "Starting unit tests"; \
-	finalec=0; \
 	for module in $(SUB_MODULES); do \
 		cd ${CURRENT_DIR}/$$module; \
 		echo "Running unit tests for module $$module"; \
 		go test -mod=readonly $(ARGS) $(TEST_PACKAGES) ./... ; \
-		ec=$$?; \
-		if [ "$$ec" -ne '0' ]; then finalec=$$ec; fi; \
-	done; \
-	exit $$finalec
+	done
 endif
 
 .PHONY: run-tests test test-all $(TEST_TARGETS)
 
 test-sim-nondeterminism:
 	@echo "Running non-determinism test..."
-	@cd ${CURRENT_DIR}/simapp && go test -mod=readonly -run TestAppStateDeterminism -Enabled=true \
+	@go test -mod=readonly $(SIMAPP) -run TestAppStateDeterminism -Enabled=true \
 		-NumBlocks=100 -BlockSize=200 -Commit=true -Period=0 -v -timeout 24h
 
 test-sim-custom-genesis-fast:
 	@echo "Running custom genesis simulation..."
 	@echo "By default, ${HOME}/.gaiad/config/genesis.json will be used."
-	@cd ${CURRENT_DIR}/simapp && go test -mod=readonly -run TestFullAppSimulation -Genesis=${HOME}/.gaiad/config/genesis.json \
+	@go test -mod=readonly $(SIMAPP) -run TestFullAppSimulation -Genesis=${HOME}/.gaiad/config/genesis.json \
 		-Enabled=true -NumBlocks=100 -BlockSize=200 -Commit=true -Seed=99 -Period=5 -v -timeout 24h
 
 test-sim-import-export: runsim
 	@echo "Running application import/export simulation. This may take several minutes..."
-	@cd ${CURRENT_DIR}/simapp && $(BINDIR)/runsim -Jobs=4 -SimAppPkg=. -ExitOnFail 50 5 TestAppImportExport
+	@$(BINDIR)/runsim -Jobs=4 -SimAppPkg=$(SIMAPP) -ExitOnFail 50 5 TestAppImportExport
 
 test-sim-after-import: runsim
 	@echo "Running application simulation-after-import. This may take several minutes..."
-	@cd ${CURRENT_DIR}/simapp && $(BINDIR)/runsim -Jobs=4 -SimAppPkg=. -ExitOnFail 50 5 TestAppSimulationAfterImport
+	@$(BINDIR)/runsim -Jobs=4 -SimAppPkg=$(SIMAPP) -ExitOnFail 50 5 TestAppSimulationAfterImport
 
 test-sim-custom-genesis-multi-seed: runsim
 	@echo "Running multi-seed custom genesis simulation..."
 	@echo "By default, ${HOME}/.gaiad/config/genesis.json will be used."
-	@cd ${CURRENT_DIR}/simapp && $(BINDIR)/runsim -Genesis=${HOME}/.gaiad/config/genesis.json -SimAppPkg=. -ExitOnFail 400 5 TestFullAppSimulation
+	@$(BINDIR)/runsim -Genesis=${HOME}/.gaiad/config/genesis.json -SimAppPkg=$(SIMAPP) -ExitOnFail 400 5 TestFullAppSimulation
 
 test-sim-multi-seed-long: runsim
 	@echo "Running long multi-seed application simulation. This may take awhile!"
-	@cd ${CURRENT_DIR}/simapp && $(BINDIR)/runsim -Jobs=4 -SimAppPkg=. -ExitOnFail 500 50 TestFullAppSimulation
+	@$(BINDIR)/runsim -Jobs=4 -SimAppPkg=$(SIMAPP) -ExitOnFail 500 50 TestFullAppSimulation
 
 test-sim-multi-seed-short: runsim
 	@echo "Running short multi-seed application simulation. This may take awhile!"
-	@cd ${CURRENT_DIR}/simapp && $(BINDIR)/runsim -Jobs=4 -SimAppPkg=. -ExitOnFail 50 10 TestFullAppSimulation
+	@$(BINDIR)/runsim -Jobs=4 -SimAppPkg=$(SIMAPP) -ExitOnFail 50 10 TestFullAppSimulation
 
 test-sim-benchmark-invariants:
 	@echo "Running simulation invariant benchmarks..."
-	cd ${CURRENT_DIR}/simapp && @go test -mod=readonly -benchmem -bench=BenchmarkInvariants -run=^$ \
+	@go test -mod=readonly $(SIMAPP) -benchmem -bench=BenchmarkInvariants -run=^$ \
 	-Enabled=true -NumBlocks=1000 -BlockSize=200 \
 	-Period=1 -Commit=true -Seed=57 -v -timeout 24h
 
@@ -332,6 +311,10 @@ test-sim-profile:
 
 .PHONY: test-sim-profile test-sim-benchmark
 
+test-cover:
+	@export VERSION=$(VERSION); bash -x contrib/test_cover.sh
+.PHONY: test-cover
+
 test-rosetta:
 	docker build -t rosetta-ci:latest -f contrib/rosetta/rosetta-ci/Dockerfile .
 	docker-compose -f contrib/rosetta/docker-compose.yaml up --abort-on-container-exit --exit-code-from test_rosetta --build
@@ -346,7 +329,7 @@ benchmark:
 ###############################################################################
 
 golangci_lint_cmd=golangci-lint
-golangci_version=v1.50.1
+golangci_version=v1.49.0
 
 lint:
 	@echo "--> Running linter"
@@ -361,8 +344,10 @@ lint-fix:
 .PHONY: lint lint-fix
 
 format:
+	@go install mvdan.cc/gofumpt@latest
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(golangci_version)
-	$(golangci_lint_cmd) run --fix
+	find . -name '*.go' -type f -not -path "./vendor*" -not -path "*.git*" -not -path "./client/docs/statik/statik.go" -not -path "./tests/mocks/*" -not -name "*.pb.go" -not -name "*.pb.gw.go" -not -name "*.pulsar.go" -not -path "./crypto/keys/secp256k1/*" | xargs gofumpt -w -l
+	golangci-lint run --fix
 .PHONY: format
 
 ###############################################################################
@@ -395,30 +380,44 @@ devdoc-update:
 ###                                Protobuf                                 ###
 ###############################################################################
 
-protoVer=0.11.4
-protoImageName=ghcr.io/cosmos/proto-builder:$(protoVer)
-protoImage=$(DOCKER) run --rm -v $(CURDIR):/workspace --workdir /workspace $(protoImageName)
+protoVer=v0.7
+protoImageName=tendermintdev/sdk-proto-gen:$(protoVer)
+containerProtoGen=$(PROJECT_NAME)-proto-gen-$(protoVer)
+containerProtoGenAny=$(PROJECT_NAME)-proto-gen-any-$(protoVer)
+containerProtoGenSwagger=$(PROJECT_NAME)-proto-gen-swagger-$(protoVer)
+containerProtoFmt=$(PROJECT_NAME)-proto-fmt-$(protoVer)
 
 proto-all: proto-format proto-lint proto-gen
 
 proto-gen:
 	@echo "Generating Protobuf files"
-	@$(protoImage) sh ./scripts/protocgen.sh
+	@if docker ps -a --format '{{.Names}}' | grep -Eq "^${containerProtoGen}$$"; then docker start -a $(containerProtoGen); else docker run --name $(containerProtoGen) -v $(CURDIR):/workspace --workdir /workspace $(protoImageName) \
+		sh ./scripts/protocgen.sh; fi
+	@go mod tidy
+
+# This generates the SDK's custom wrapper for google.protobuf.Any. It should only be run manually when needed
+proto-gen-any:
+	@echo "Generating Protobuf Any"
+	@if docker ps -a --format '{{.Names}}' | grep -Eq "^${containerProtoGenAny}$$"; then docker start -a $(containerProtoGenAny); else docker run --name $(containerProtoGenAny) -v $(CURDIR):/workspace --workdir /workspace $(protoImageName) \
+		sh ./scripts/protocgen-any.sh; fi
 
 proto-swagger-gen:
 	@echo "Generating Protobuf Swagger"
-	@$(protoImage) sh ./scripts/protoc-swagger-gen.sh
+	@if docker ps -a --format '{{.Names}}' | grep -Eq "^${containerProtoGenSwagger}$$"; then docker start -a $(containerProtoGenSwagger); else docker run --name $(containerProtoGenSwagger) -v $(CURDIR):/workspace --workdir /workspace $(protoImageName) \
+		sh ./scripts/protoc-swagger-gen.sh; fi
 
 proto-format:
-	@$(protoImage) find ./ -name "*.proto" -exec clang-format -i {} \;
+	@echo "Formatting Protobuf files"
+	@if docker ps -a --format '{{.Names}}' | grep -Eq "^${containerProtoFmt}$$"; then docker start -a $(containerProtoFmt); else docker run --name $(containerProtoFmt) -v $(CURDIR):/workspace --workdir /workspace tendermintdev/docker-build-proto \
+		find ./ -not -path "./third_party/*" -name "*.proto" -exec clang-format -i {} \; ; fi
 
 proto-lint:
-	@$(protoImage) buf lint --error-format=json
+	@$(DOCKER_BUF) lint --error-format=json
 
 proto-check-breaking:
-	@$(protoImage) buf breaking --against $(HTTPS_GIT)#branch=main
+	@$(DOCKER_BUF) breaking --against $(HTTPS_GIT)#branch=main
 
-TM_URL              = https://raw.githubusercontent.com/tendermint/tendermint/v0.37.0-rc2/proto/tendermint
+TM_URL              = https://raw.githubusercontent.com/cometbft/cometbft/v0.34.28/proto/tendermint
 
 TM_CRYPTO_TYPES     = proto/tendermint/crypto
 TM_ABCI_TYPES       = proto/tendermint/abci
@@ -453,9 +452,7 @@ proto-update-deps:
 	@mkdir -p $(TM_P2P)
 	@curl -sSL $(TM_URL)/p2p/types.proto > $(TM_P2P)/types.proto
 
-	$(DOCKER) run --rm -v $(CURDIR)/proto:/workspace --workdir /workspace $(protoImageName) buf mod update
-
-.PHONY: proto-all proto-gen proto-swagger-gen proto-format proto-lint proto-check-breaking proto-update-deps
+.PHONY: proto-all proto-gen proto-gen-any proto-swagger-gen proto-format proto-lint proto-check-breaking proto-update-deps
 
 ###############################################################################
 ###                                Localnet                                 ###

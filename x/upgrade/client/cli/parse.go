@@ -8,12 +8,12 @@ import (
 )
 
 func parseArgsToContent(fs *pflag.FlagSet, name string) (gov.Content, error) {
-	title, err := fs.GetString(cli.FlagTitle) //nolint:staticcheck // we are intentionally using a deprecated flag here.
+	title, err := fs.GetString(cli.FlagTitle) //nolint:staticcheck
 	if err != nil {
 		return nil, err
 	}
 
-	description, err := fs.GetString(cli.FlagDescription) //nolint:staticcheck // we are intentionally using a deprecated flag here.
+	description, err := fs.GetString(cli.FlagDescription) //nolint:staticcheck
 	if err != nil {
 		return nil, err
 	}

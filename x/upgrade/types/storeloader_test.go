@@ -6,15 +6,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	dbm "github.com/cosmos/cosmos-db"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/log"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+	dbm "github.com/tendermint/tm-db"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
-	"github.com/cosmos/cosmos-sdk/store/metrics"
-	pruningtypes "github.com/cosmos/cosmos-sdk/store/pruning/types"
+	pruningtypes "github.com/cosmos/cosmos-sdk/pruning/types"
+	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/store/rootmulti"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -27,11 +28,14 @@ func useUpgradeLoader(height int64, upgrades *storetypes.StoreUpgrades) func(*ba
 }
 
 func defaultLogger() log.Logger {
-	return log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+	writer := zerolog.ConsoleWriter{Out: os.Stderr}
+	return server.ZeroLogWrapper{
+		Logger: zerolog.New(writer).Level(zerolog.InfoLevel).With().Timestamp().Logger(),
+	}
 }
 
 func initStore(t *testing.T, db dbm.DB, storeKey string, k, v []byte) {
-	rs := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
+	rs := rootmulti.NewStore(db, log.NewNopLogger())
 	rs.SetPruning(pruningtypes.NewPruningOptions(pruningtypes.PruningNothing))
 	key := sdk.NewKVStoreKey(storeKey)
 	rs.MountStoreWithDB(key, storetypes.StoreTypeIAVL, nil)
@@ -48,7 +52,7 @@ func initStore(t *testing.T, db dbm.DB, storeKey string, k, v []byte) {
 }
 
 func checkStore(t *testing.T, db dbm.DB, ver int64, storeKey string, k, v []byte) {
-	rs := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
+	rs := rootmulti.NewStore(db, log.NewNopLogger())
 	rs.SetPruning(pruningtypes.NewPruningOptions(pruningtypes.PruningNothing))
 	key := sdk.NewKVStoreKey(storeKey)
 	rs.MountStoreWithDB(key, storetypes.StoreTypeIAVL, nil)
@@ -78,7 +82,7 @@ func TestSetLoader(t *testing.T) {
 	data, err := json.Marshal(upgradeInfo)
 	require.NoError(t, err)
 
-	err = os.WriteFile(upgradeInfoFilePath, data, 0o644) //nolint:gosec
+	err = os.WriteFile(upgradeInfoFilePath, data, 0o644)
 	require.NoError(t, err)
 
 	// make sure it exists before running everything
@@ -146,11 +150,6 @@ func TestSetLoader(t *testing.T) {
 			app.BeginBlock(abci.RequestBeginBlock{Header: tmproto.Header{Height: upgradeHeight}})
 			res := app.Commit()
 			require.NotNil(t, res.Data)
-
-			// checking the case of the store being renamed
-			if tc.setLoader != nil {
-				checkStore(t, db, upgradeHeight, tc.origStoreKey, k, nil)
-			}
 
 			// check db is properly updated
 			checkStore(t, db, upgradeHeight, tc.loadStoreKey, k, v)

@@ -3,7 +3,6 @@ package keys
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -294,18 +293,18 @@ func printCreate(cmd *cobra.Command, k *keyring.Record, showMnemonic bool, mnemo
 	switch outputFormat {
 	case OutputFormatText:
 		cmd.PrintErrln()
-		if err := printKeyringRecord(cmd.OutOrStdout(), k, MkAccKeyOutput, outputFormat); err != nil {
+		if err := printKeyringRecord(cmd.OutOrStdout(), k, keyring.MkAccKeyOutput, outputFormat); err != nil {
 			return err
 		}
 
 		// print mnemonic unless requested not to.
 		if showMnemonic {
-			if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "\n**Important** write this mnemonic phrase in a safe place.\nIt is the only way to recover your account if you ever forget your password.\n\n%s\n", mnemonic); err != nil {
+			if _, err := fmt.Fprintln(cmd.ErrOrStderr(), fmt.Sprintf("\n**Important** write this mnemonic phrase in a safe place.\nIt is the only way to recover your account if you ever forget your password.\n\n%s\n", mnemonic)); err != nil { //nolint:gosimple
 				return fmt.Errorf("failed to print mnemonic: %v", err)
 			}
 		}
 	case OutputFormatJSON:
-		out, err := MkAccKeyOutput(k)
+		out, err := keyring.MkAccKeyOutput(k)
 		if err != nil {
 			return err
 		}
@@ -314,7 +313,7 @@ func printCreate(cmd *cobra.Command, k *keyring.Record, showMnemonic bool, mnemo
 			out.Mnemonic = mnemonic
 		}
 
-		jsonString, err := json.Marshal(out)
+		jsonString, err := KeysCdc.MarshalJSON(out)
 		if err != nil {
 			return err
 		}

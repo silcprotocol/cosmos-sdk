@@ -9,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	tmjson "github.com/tendermint/tendermint/libs/json"
-	"golang.org/x/exp/maps"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
@@ -17,7 +16,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/version"
 	v043 "github.com/cosmos/cosmos-sdk/x/genutil/migrations/v043"
 	v046 "github.com/cosmos/cosmos-sdk/x/genutil/migrations/v046"
-	v047 "github.com/cosmos/cosmos-sdk/x/genutil/migrations/v047"
 	"github.com/cosmos/cosmos-sdk/x/genutil/types"
 )
 
@@ -29,7 +27,6 @@ const flagGenesisTime = "genesis-time"
 var migrationMap = types.MigrationMap{
 	"v0.43": v043.Migrate, // NOTE: v0.43, v0.44 and v0.45 are genesis compatible.
 	"v0.46": v046.Migrate,
-	"v0.47": v047.Migrate,
 }
 
 // GetMigrationCallback returns a MigrationCallback for a given version.
@@ -39,7 +36,15 @@ func GetMigrationCallback(version string) types.MigrationCallback {
 
 // GetMigrationVersions get all migration version in a sorted slice.
 func GetMigrationVersions() []string {
-	versions := maps.Keys(migrationMap)
+	versions := make([]string, len(migrationMap))
+
+	var i int
+
+	for version := range migrationMap {
+		versions[i] = version
+		i++
+	}
+
 	sort.Strings(versions)
 
 	return versions

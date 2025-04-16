@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/protobuf/proto" //nolint:staticcheck // grpc-gateway uses deprecated golang/protobuf
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	abci "github.com/tendermint/tendermint/abci/types"
@@ -133,6 +133,93 @@ txhash: "74657374"
 		TxHash:    "74657374",
 	}, sdk.NewResponseFormatBroadcastTx(resultBroadcastTx))
 	s.Require().Equal((*sdk.TxResponse)(nil), sdk.NewResponseFormatBroadcastTx(nil))
+}
+
+func (s *resultTestSuite) TestResponseFormatBroadcastTxCommit() {
+	// test nil
+	s.Require().Equal((*sdk.TxResponse)(nil), sdk.NewResponseFormatBroadcastTxCommit(nil))
+
+	logs, err := sdk.ParseABCILogs(`[]`)
+	s.Require().NoError(err)
+
+	// test checkTx
+	checkTxResult := &coretypes.ResultBroadcastTxCommit{
+		Height: 10,
+		Hash:   bytes.HexBytes([]byte("test")),
+		CheckTx: abci.ResponseCheckTx{
+			Code:      90,
+			Data:      nil,
+			Log:       `[]`,
+			Info:      "info",
+			GasWanted: 99,
+			GasUsed:   100,
+			Codespace: "codespace",
+			Events: []abci.Event{
+				{
+					Type: "message",
+					Attributes: []abci.EventAttribute{
+						{
+							Key:   []byte("action"),
+							Value: []byte("foo"),
+							Index: true,
+						},
+					},
+				},
+			},
+		},
+	}
+	deliverTxResult := &coretypes.ResultBroadcastTxCommit{
+		Height: 10,
+		Hash:   bytes.HexBytes([]byte("test")),
+		DeliverTx: abci.ResponseDeliverTx{
+			Code:      90,
+			Data:      nil,
+			Log:       `[]`,
+			Info:      "info",
+			GasWanted: 99,
+			GasUsed:   100,
+			Codespace: "codespace",
+			Events: []abci.Event{
+				{
+					Type: "message",
+					Attributes: []abci.EventAttribute{
+						{
+							Key:   []byte("action"),
+							Value: []byte("foo"),
+							Index: true,
+						},
+					},
+				},
+			},
+		},
+	}
+	want := &sdk.TxResponse{
+		Height:    10,
+		TxHash:    "74657374",
+		Codespace: "codespace",
+		Code:      90,
+		Data:      "",
+		RawLog:    `[]`,
+		Logs:      logs,
+		Info:      "info",
+		GasWanted: 99,
+		GasUsed:   100,
+		Events: []abci.Event{
+			{
+				Type: "message",
+				Attributes: []abci.EventAttribute{
+					{
+						Key:   []byte("action"),
+						Value: []byte("foo"),
+						Index: true,
+					},
+				},
+			},
+		},
+	}
+
+	s.Require().Equal(want, sdk.NewResponseFormatBroadcastTxCommit(checkTxResult))
+	s.Require().Equal(want, sdk.NewResponseFormatBroadcastTxCommit(deliverTxResult))
 }
 
 func TestWrapServiceResult(t *testing.T) {

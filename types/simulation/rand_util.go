@@ -40,15 +40,15 @@ func RandStringOfLength(r *rand.Rand, n int) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
-// RandPositiveInt get a rand positive math.Int
+// RandPositiveInt get a rand positive sdk.Int
 func RandPositiveInt(r *rand.Rand, max math.Int) (math.Int, error) {
-	if !max.GTE(math.OneInt()) {
+	if !max.GTE(sdk.OneInt()) {
 		return math.Int{}, errors.New("max too small")
 	}
 
-	max = max.Sub(math.OneInt())
+	max = max.Sub(sdk.OneInt())
 
-	return sdk.NewIntFromBigInt(new(big.Int).Rand(r, max.BigInt())).Add(math.OneInt()), nil
+	return sdk.NewIntFromBigInt(new(big.Int).Rand(r, max.BigInt())).Add(sdk.OneInt()), nil
 }
 
 // RandomAmount generates a random amount
@@ -70,7 +70,7 @@ func RandomAmount(r *rand.Rand, max math.Int) math.Int {
 
 // RandomDecAmount generates a random decimal amount
 // Note: The range of RandomDecAmount includes max, and is, in fact, biased to return max as well as 0.
-func RandomDecAmount(r *rand.Rand, max sdk.Dec) math.LegacyDec {
+func RandomDecAmount(r *rand.Rand, max sdk.Dec) sdk.Dec {
 	randInt := big.NewInt(0)
 
 	switch r.Intn(10) {

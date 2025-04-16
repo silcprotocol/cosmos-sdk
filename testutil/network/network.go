@@ -15,19 +15,15 @@ import (
 	"testing"
 	"time"
 
-	dbm "github.com/cosmos/cosmos-db"
+	"cosmossdk.io/math"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	tmrand "github.com/tendermint/tendermint/libs/rand"
 	"github.com/tendermint/tendermint/node"
 	tmclient "github.com/tendermint/tendermint/rpc/client"
+	dbm "github.com/tendermint/tm-db"
 	"google.golang.org/grpc"
 
-	"cosmossdk.io/math"
-	"github.com/cosmos/cosmos-sdk/testutil/configurator"
-	"github.com/cosmos/cosmos-sdk/testutil/testdata"
-	tmlog "github.com/tendermint/tendermint/libs/log"
-
-	"cosmossdk.io/depinject"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -36,24 +32,18 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
-	"github.com/cosmos/cosmos-sdk/runtime"
+	pruningtypes "github.com/cosmos/cosmos-sdk/pruning/types"
 	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	srvconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
-	pruningtypes "github.com/cosmos/cosmos-sdk/store/pruning/types"
+	"github.com/cosmos/cosmos-sdk/simapp"
+	"github.com/cosmos/cosmos-sdk/simapp/params"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
-	_ "github.com/cosmos/cosmos-sdk/x/auth"           // import auth as a blank
-	_ "github.com/cosmos/cosmos-sdk/x/auth/tx/config" // import auth tx config as a blank
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	_ "github.com/cosmos/cosmos-sdk/x/bank" // import bank as a blank
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	_ "github.com/cosmos/cosmos-sdk/x/consensus" // import consensus as a blank
 	"github.com/cosmos/cosmos-sdk/x/genutil"
-	_ "github.com/cosmos/cosmos-sdk/x/params"  // import params as a blank
-	_ "github.com/cosmos/cosmos-sdk/x/staking" // import staking as a blank
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -62,15 +52,19 @@ var lock = new(sync.Mutex)
 
 // AppConstructor defines a function which accepts a network configuration and
 // creates an ABCI Application to provide to Tendermint.
-type (
-	AppConstructor     = func(val ValidatorI) servertypes.Application
-	TestFixtureFactory = func() TestFixture
-)
+type AppConstructor = func(val Validator) servertypes.Application
 
-type TestFixture struct {
-	AppConstructor AppConstructor
-	GenesisState   map[string]json.RawMessage
-	EncodingConfig moduletestutil.TestEncodingConfig
+// NewAppConstructor returns a new simapp AppConstructor
+func NewAppConstructor(encodingCfg params.EncodingConfig) AppConstructor {
+	return func(val Validator) servertypes.Application {
+		return simapp.NewSimApp(
+			val.Ctx.Logger, dbm.NewMemDB(), nil, true, make(map[int64]bool), val.Ctx.Config.RootDir, 0,
+			encodingCfg,
+			simapp.EmptyAppOptions{},
+			baseapp.SetPruning(pruningtypes.NewPruningOptionsFromString(val.AppConfig.Pruning)),
+			baseapp.SetMinGasPrices(val.AppConfig.MinGasPrices),
+		)
+	}
 }
 
 // Config defines the necessary configuration used to bootstrap and start an
@@ -106,17 +100,17 @@ type Config struct {
 
 // DefaultConfig returns a sane default configuration suitable for nearly all
 // testing requirements.
-func DefaultConfig(factory TestFixtureFactory) Config {
-	fixture := factory()
+func DefaultConfig() Config {
+	encCfg := simapp.MakeTestEncodingConfig()
 
 	return Config{
-		Codec:             fixture.EncodingConfig.Codec,
-		TxConfig:          fixture.EncodingConfig.TxConfig,
-		LegacyAmino:       fixture.EncodingConfig.Amino,
-		InterfaceRegistry: fixture.EncodingConfig.InterfaceRegistry,
+		Codec:             encCfg.Codec,
+		TxConfig:          encCfg.TxConfig,
+		LegacyAmino:       encCfg.Amino,
+		InterfaceRegistry: encCfg.InterfaceRegistry,
 		AccountRetriever:  authtypes.AccountRetriever{},
-		AppConstructor:    fixture.AppConstructor,
-		GenesisState:      fixture.GenesisState,
+		AppConstructor:    NewAppConstructor(encCfg),
+		GenesisState:      simapp.ModuleBasics.DefaultGenesis(encCfg.Codec),
 		TimeoutCommit:     2 * time.Second,
 		ChainID:           "chain-" + tmrand.Str(6),
 		NumValidators:     4,
@@ -131,72 +125,6 @@ func DefaultConfig(factory TestFixtureFactory) Config {
 		KeyringOptions:    []keyring.Option{},
 		PrintMnemonic:     false,
 	}
-}
-
-// MinimumAppConfig defines the minimum of modules required for a call to New to succeed
-func MinimumAppConfig() depinject.Config {
-	return configurator.NewAppConfig(
-		configurator.AuthModule(),
-		configurator.ParamsModule(),
-		configurator.BankModule(),
-		configurator.GenutilModule(),
-		configurator.StakingModule(),
-		configurator.ConsensusModule(),
-		configurator.TxModule(),
-	)
-}
-
-func DefaultConfigWithAppConfig(appConfig depinject.Config) (Config, error) {
-	var (
-		appBuilder        *runtime.AppBuilder
-		txConfig          client.TxConfig
-		legacyAmino       *codec.LegacyAmino
-		cdc               codec.Codec
-		interfaceRegistry codectypes.InterfaceRegistry
-	)
-
-	if err := depinject.Inject(appConfig,
-		&appBuilder,
-		&txConfig,
-		&cdc,
-		&legacyAmino,
-		&interfaceRegistry,
-	); err != nil {
-		return Config{}, err
-	}
-
-	cfg := DefaultConfig(func() TestFixture {
-		return TestFixture{}
-	})
-	cfg.Codec = cdc
-	cfg.TxConfig = txConfig
-	cfg.LegacyAmino = legacyAmino
-	cfg.InterfaceRegistry = interfaceRegistry
-	cfg.GenesisState = appBuilder.DefaultGenesis()
-	cfg.AppConstructor = func(val ValidatorI) servertypes.Application {
-		// we build a unique app instance for every validator here
-		var appBuilder *runtime.AppBuilder
-		if err := depinject.Inject(appConfig, &appBuilder); err != nil {
-			panic(err)
-		}
-		app := appBuilder.Build(
-			val.GetCtx().Logger,
-			dbm.NewMemDB(),
-			nil,
-			baseapp.SetPruning(pruningtypes.NewPruningOptionsFromString(val.GetAppConfig().Pruning)),
-			baseapp.SetMinGasPrices(val.GetAppConfig().MinGasPrices),
-		)
-
-		testdata.RegisterQueryServer(app.GRPCQueryRouter(), testdata.QueryImpl{})
-
-		if err := app.Load(true); err != nil {
-			panic(err)
-		}
-
-		return app
-	}
-
-	return cfg, nil
 }
 
 type (
@@ -241,34 +169,19 @@ type (
 		grpc    *grpc.Server
 		grpcWeb *http.Server
 	}
-
-	// ValidatorI expose a validator's context and configuration
-	ValidatorI interface {
-		GetCtx() *server.Context
-		GetAppConfig() *srvconfig.Config
-	}
-
-	// Logger is a network logger interface that exposes testnet-level Log() methods for an in-process testing network
-	// This is not to be confused with logging that may happen at an individual node or validator level
-	Logger interface {
-		Log(args ...interface{})
-		Logf(format string, args ...interface{})
-	}
 )
+
+// Logger is a network logger interface that exposes testnet-level Log() methods for an in-process testing network
+// This is not to be confused with logging that may happen at an individual node or validator level
+type Logger interface {
+	Log(args ...interface{})
+	Logf(format string, args ...interface{})
+}
 
 var (
-	_ Logger     = (*testing.T)(nil)
-	_ Logger     = (*CLILogger)(nil)
-	_ ValidatorI = Validator{}
+	_ Logger = (*testing.T)(nil)
+	_ Logger = (*CLILogger)(nil)
 )
-
-func (v Validator) GetCtx() *server.Context {
-	return v.Ctx
-}
-
-func (v Validator) GetAppConfig() *srvconfig.Config {
-	return v.AppConfig
-}
 
 // CLILogger wraps a cobra.Command and provides command logging methods.
 type CLILogger struct {
@@ -342,7 +255,7 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 				apiListenAddr = cfg.APIAddress
 			} else {
 				var err error
-				apiListenAddr, _, err = FreeTCPAddr()
+				apiListenAddr, _, err = server.FreeTCPAddr()
 				if err != nil {
 					return nil, err
 				}
@@ -358,7 +271,7 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 			if cfg.RPCAddress != "" {
 				tmCfg.RPC.ListenAddress = cfg.RPCAddress
 			} else {
-				rpcAddr, _, err := FreeTCPAddr()
+				rpcAddr, _, err := server.FreeTCPAddr()
 				if err != nil {
 					return nil, err
 				}
@@ -368,7 +281,7 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 			if cfg.GRPCAddress != "" {
 				appCfg.GRPC.Address = cfg.GRPCAddress
 			} else {
-				_, grpcPort, err := FreeTCPAddr()
+				_, grpcPort, err := server.FreeTCPAddr()
 				if err != nil {
 					return nil, err
 				}
@@ -376,7 +289,7 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 			}
 			appCfg.GRPC.Enable = true
 
-			_, grpcWebPort, err := FreeTCPAddr()
+			_, grpcWebPort, err := server.FreeTCPAddr()
 			if err != nil {
 				return nil, err
 			}
@@ -384,9 +297,10 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 			appCfg.GRPCWeb.Enable = true
 		}
 
-		logger := tmlog.NewNopLogger()
+		logger := server.ZeroLogWrapper{Logger: zerolog.Nop()}
 		if cfg.EnableTMLogging {
-			logger = tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout))
+			logWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+			logger = server.ZeroLogWrapper{Logger: zerolog.New(logWriter).Level(zerolog.InfoLevel).With().Timestamp().Logger()}
 		}
 
 		ctx.Logger = logger
@@ -410,13 +324,13 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 		tmCfg.Moniker = nodeDirName
 		monikers[i] = nodeDirName
 
-		proxyAddr, _, err := FreeTCPAddr()
+		proxyAddr, _, err := server.FreeTCPAddr()
 		if err != nil {
 			return nil, err
 		}
 		tmCfg.ProxyApp = proxyAddr
 
-		p2pAddr, _, err := FreeTCPAddr()
+		p2pAddr, _, err := server.FreeTCPAddr()
 		if err != nil {
 			return nil, err
 		}
@@ -491,8 +405,8 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 			valPubKeys[i],
 			sdk.NewCoin(cfg.BondDenom, cfg.BondedTokens),
 			stakingtypes.NewDescription(nodeDirName, "", "", "", ""),
-			stakingtypes.NewCommissionRates(commission, math.LegacyOneDec(), math.LegacyOneDec()),
-			math.OneInt(),
+			stakingtypes.NewCommissionRates(commission, sdk.OneDec(), sdk.OneDec()),
+			sdk.OneInt(),
 		)
 		if err != nil {
 			return nil, err
@@ -521,8 +435,7 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 			WithKeybase(kb).
 			WithTxConfig(cfg.TxConfig)
 
-		// When Textual is wired up, the context argument should be retrieved from the client context.
-		err = tx.Sign(context.TODO(), txFactory, nodeDirName, txBuilder, true)
+		err = tx.Sign(txFactory, nodeDirName, txBuilder, true)
 		if err != nil {
 			return nil, err
 		}
@@ -535,6 +448,7 @@ func New(l Logger, baseDir string, cfg Config) (*Network, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		srvconfig.WriteConfigFile(filepath.Join(nodeDir, "config", "app.toml"), appCfg)
 
 		clientCtx := client.Context{}.

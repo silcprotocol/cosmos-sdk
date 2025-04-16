@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"reflect"
 
-	"github.com/cosmos/gogoproto/proto"
-
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/store/prefix"
 	"github.com/cosmos/cosmos-sdk/store/types"
@@ -38,7 +36,7 @@ type table struct {
 }
 
 // newTable creates a new table
-func newTable(prefix [2]byte, model proto.Message, cdc codec.Codec) (*table, error) {
+func newTable(prefix [2]byte, model codec.ProtoMarshaler, cdc codec.Codec) (*table, error) {
 	if model == nil {
 		return nil, errors.ErrORMInvalidArgument.Wrap("Model must not be nil")
 	}
@@ -73,7 +71,7 @@ func (a *table) AddAfterDeleteInterceptor(interceptor AfterDeleteInterceptor) {
 //
 // Create iterates through the registered callbacks that may add secondary index
 // keys.
-func (a table) Create(store sdk.KVStore, rowID RowID, obj proto.Message) error {
+func (a table) Create(store sdk.KVStore, rowID RowID, obj codec.ProtoMarshaler) error {
 	if a.Has(store, rowID) {
 		return errors.ErrORMUniqueConstraint
 	}
@@ -87,7 +85,7 @@ func (a table) Create(store sdk.KVStore, rowID RowID, obj proto.Message) error {
 // nil.
 //
 // Update triggers all "after set" hooks that may add or remove secondary index keys.
-func (a table) Update(store sdk.KVStore, rowID RowID, newValue proto.Message) error {
+func (a table) Update(store sdk.KVStore, rowID RowID, newValue codec.ProtoMarshaler) error {
 	if !a.Has(store, rowID) {
 		return sdkerrors.ErrNotFound
 	}
@@ -100,7 +98,7 @@ func (a table) Update(store sdk.KVStore, rowID RowID, newValue proto.Message) er
 //
 // Set iterates through the registered callbacks that may add secondary index
 // keys.
-func (a table) Set(store sdk.KVStore, rowID RowID, newValue proto.Message) error {
+func (a table) Set(store sdk.KVStore, rowID RowID, newValue codec.ProtoMarshaler) error {
 	if len(rowID) == 0 {
 		return errors.ErrORMEmptyKey
 	}
@@ -113,9 +111,9 @@ func (a table) Set(store sdk.KVStore, rowID RowID, newValue proto.Message) error
 
 	pStore := prefix.NewStore(store, a.prefix[:])
 
-	var oldValue proto.Message
+	var oldValue codec.ProtoMarshaler
 	if a.Has(store, rowID) {
-		oldValue = reflect.New(a.model).Interface().(proto.Message)
+		oldValue = reflect.New(a.model).Interface().(codec.ProtoMarshaler)
 		a.GetOne(store, rowID, oldValue)
 	}
 
@@ -133,7 +131,7 @@ func (a table) Set(store sdk.KVStore, rowID RowID, newValue proto.Message) error
 	return nil
 }
 
-func assertValid(obj proto.Message) error {
+func assertValid(obj codec.ProtoMarshaler) error {
 	if v, ok := obj.(Validateable); ok {
 		if err := v.ValidateBasic(); err != nil {
 			return err
@@ -151,7 +149,7 @@ func assertValid(obj proto.Message) error {
 func (a table) Delete(store sdk.KVStore, rowID RowID) error {
 	pStore := prefix.NewStore(store, a.prefix[:])
 
-	oldValue := reflect.New(a.model).Interface().(proto.Message)
+	oldValue := reflect.New(a.model).Interface().(codec.ProtoMarshaler)
 	if err := a.GetOne(store, rowID, oldValue); err != nil {
 		return sdkerrors.Wrap(err, "load old value")
 	}
@@ -178,7 +176,7 @@ func (a table) Has(store sdk.KVStore, key RowID) bool {
 // GetOne load the object persisted for the given RowID into the dest parameter.
 // If none exists or `rowID==nil` then `sdkerrors.ErrNotFound` is returned instead.
 // Parameters must not be nil - we don't allow creation of values with empty keys.
-func (a table) GetOne(store sdk.KVStore, rowID RowID, dest proto.Message) error {
+func (a table) GetOne(store sdk.KVStore, rowID RowID, dest codec.ProtoMarshaler) error {
 	if len(rowID) == 0 {
 		return sdkerrors.ErrNotFound
 	}
@@ -300,7 +298,7 @@ type typeSafeIterator struct {
 	it        types.Iterator
 }
 
-func (i typeSafeIterator) LoadNext(dest proto.Message) (RowID, error) {
+func (i typeSafeIterator) LoadNext(dest codec.ProtoMarshaler) (RowID, error) {
 	if !i.it.Valid() {
 		return nil, errors.ErrORMIteratorDone
 	}
@@ -310,5 +308,6 @@ func (i typeSafeIterator) LoadNext(dest proto.Message) (RowID, error) {
 }
 
 func (i typeSafeIterator) Close() error {
-	return i.it.Close()
+	i.it.Close()
+	return nil
 }

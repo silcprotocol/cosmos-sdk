@@ -3,11 +3,10 @@ package cli
 import (
 	"strconv"
 
-	"github.com/spf13/cobra"
-
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/x/group"
+	"github.com/spf13/cobra"
 )
 
 // QueryCmd returns the cli query commands for the group module.
@@ -34,6 +33,7 @@ func QueryCmd(name string) *cobra.Command {
 		QueryVotesByVoterCmd(),
 		QueryGroupsByMemberCmd(),
 		QueryTallyResultCmd(),
+		QueryGroupsCmd(),
 	)
 
 	return queryCmd
@@ -435,7 +435,7 @@ func QueryVotesByProposalCmd() *cobra.Command {
 	return cmd
 }
 
-// QueryTallyResultCmd creates a CLI command for Query/TallyResult.
+// QueryVotesByProposalCmd creates a CLI command for Query/TallyResult.
 func QueryTallyResultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tally-result [proposal-id]",
@@ -502,6 +502,40 @@ func QueryVotesByVoterCmd() *cobra.Command {
 	}
 
 	flags.AddQueryFlagsToCmd(cmd)
+
+	return cmd
+}
+
+func QueryGroupsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "groups",
+		Short: "Query for groups present in the state",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			queryClient := group.NewQueryClient(clientCtx)
+
+			res, err := queryClient.Groups(cmd.Context(), &group.QueryGroupsRequest{
+				Pagination: pageReq,
+			})
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "groups")
 
 	return cmd
 }

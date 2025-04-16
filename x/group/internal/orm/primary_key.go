@@ -1,8 +1,6 @@
 package orm
 
 import (
-	"github.com/cosmos/gogoproto/proto"
-
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -42,7 +40,7 @@ type PrimaryKeyed interface {
 	// IMPORTANT: []byte parts are encoded with a single byte length prefix,
 	// so cannot be longer than 255 bytes.
 	PrimaryKeyFields() []interface{}
-	proto.Message
+	codec.ProtoMarshaler
 }
 
 // PrimaryKey returns the immutable and serialized primary key of this object.
@@ -113,7 +111,7 @@ func (a PrimaryKeyTable) Contains(store sdk.KVStore, obj PrimaryKeyed) bool {
 
 // GetOne loads the object persisted for the given primary Key into the dest parameter.
 // If none exists `ErrNotFound` is returned instead. Parameters must not be nil.
-func (a PrimaryKeyTable) GetOne(store sdk.KVStore, primKey RowID, dest proto.Message) error {
+func (a PrimaryKeyTable) GetOne(store sdk.KVStore, primKey RowID, dest codec.ProtoMarshaler) error {
 	return a.table.GetOne(store, primKey, dest)
 }
 

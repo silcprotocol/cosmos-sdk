@@ -31,7 +31,6 @@ func GetTxCmd() *cobra.Command {
 	return nftTxCmd
 }
 
-// NewCmdSend creates a CLI command for MsgSend.
 func NewCmdSend() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "send [class-id] [nft-id] [receiver] --from [sender]",

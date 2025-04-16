@@ -15,9 +15,9 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	clienttestutil "github.com/cosmos/cosmos-sdk/client/testutil"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/simapp"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -44,7 +44,7 @@ func Test_runAddCmdLedgerWithCustomCoinType(t *testing.T) {
 	// Prepare a keybase
 	kbHome := t.TempDir()
 
-	cdc := clienttestutil.MakeTestCodec(t)
+	cdc := simapp.MakeTestEncodingConfig().Codec
 	clientCtx := client.Context{}.WithKeyringDir(kbHome).WithCodec(cdc)
 	ctx := context.WithValue(context.Background(), client.ClientContextKey, &clientCtx)
 
@@ -96,9 +96,9 @@ func Test_runAddCmdLedger(t *testing.T) {
 
 	mockIn := testutil.ApplyMockIODiscardOutErr(cmd)
 	kbHome := t.TempDir()
-	cdc := clienttestutil.MakeTestCodec(t)
+	encCfg := simapp.MakeTestEncodingConfig()
 
-	clientCtx := client.Context{}.WithKeyringDir(kbHome).WithCodec(cdc)
+	clientCtx := client.Context{}.WithKeyringDir(kbHome).WithCodec(encCfg.Codec)
 	ctx := context.WithValue(context.Background(), client.ClientContextKey, &clientCtx)
 
 	cmd.SetArgs([]string{
@@ -114,7 +114,7 @@ func Test_runAddCmdLedger(t *testing.T) {
 	require.NoError(t, cmd.ExecuteContext(ctx))
 
 	// Now check that it has been stored properly
-	kb, err := keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, kbHome, mockIn, cdc)
+	kb, err := keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, kbHome, mockIn, encCfg.Codec)
 	require.NoError(t, err)
 
 	// Now check that it has been stored properly
@@ -137,7 +137,7 @@ func Test_runAddCmdLedger(t *testing.T) {
 }
 
 func Test_runAddCmdLedgerDryRun(t *testing.T) {
-	cdc := clienttestutil.MakeTestCodec(t)
+	cdc := simapp.MakeTestEncodingConfig().Codec
 	testData := []struct {
 		name  string
 		args  []string
